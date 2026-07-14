@@ -2,6 +2,7 @@ import os
 import re
 import textwrap
 import itertools
+import io
 from collections import Counter, defaultdict
 import pandas as pd
 import streamlit as st
@@ -10,8 +11,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pyvis.network import Network
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
+import networkx as nx
+from matplotlib.backends.backend_pdf import PdfPages
 
-# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH PARA MAC)
+# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH)
 os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
 os.environ["STREAMLIT_SERVER_MAX_MESSAGE_SIZE"] = "200"
 
@@ -37,7 +41,8 @@ with st.sidebar:
     pagina_actual = st.radio("Ir a:", [
         "🕸️ Mapa Sistémico (Redes)", 
         "📊 Analítica de Portafolio", 
-        "🧬 Patrones de Co-Ocurrencia"
+        "🧬 Patrones de Co-Ocurrencia",
+        "🖨️ Generador de Fichas (Frente 2)"
     ])
     st.markdown("---")
     st.caption("Visor Sistémico PMEL v2.0\nEstrategia 2030")
@@ -99,12 +104,11 @@ def obtener_estado_color(cell, codigo_historia):
     return 'Negro (Cambio)'
 
 def obtener_color_borde_categoria(col_index):
-    # Respaldo de colores por posición de columna si el font falla
-    if col_index == 4: return "#9C27B0" # Lila 
-    elif 5 <= col_index <= 10: return "#C0CA33" # Verde Limón
-    elif 11 <= col_index <= 18: return "#D81B60" # Magenta
-    elif 19 <= col_index <= 22: return "#FFB300" # Amarillo
-    elif 23 <= col_index <= 26: return "#4CAF50" # Verde Pistacho
+    if col_index == 4: return "#9C27B0" 
+    elif 5 <= col_index <= 10: return "#C0CA33" 
+    elif 11 <= col_index <= 18: return "#D81B60" 
+    elif 19 <= col_index <= 22: return "#FFB300" 
+    elif 23 <= col_index <= 26: return "#4CAF50" 
     return "#BDBDBD"
 
 def limpiar_codigo_historia(codigo):
@@ -139,7 +143,6 @@ def extraer_datos_puros(ruta_archivo):
         ws = wb[sheet_name]
         iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
         
-        # Mapeo de colores de la LETRA (Font) en los Cambios Esperados (Fila 2)
         colores_cambios_font = {}
         for col in range(4, ws.max_column + 1):
             val_cambio = ws.cell(row=2, column=col).value
@@ -151,15 +154,11 @@ def extraer_datos_puros(ruta_archivo):
                     if cell_head.font and cell_head.font.color:
                         if cell_head.font.color.type == 'rgb':
                             c_rgb = str(cell_head.font.color.rgb)
-                            if c_rgb and c_rgb != '00000000':
-                                font_hex = "#" + c_rgb[-6:]
+                            if c_rgb and c_rgb != '00000000': font_hex = "#" + c_rgb[-6:]
                         elif cell_head.font.color.type == 'theme':
                             font_hex = obtener_color_borde_categoria(col)
-                except: 
-                    font_hex = obtener_color_borde_categoria(col)
-                
-                # Si por alguna razón es negro/blanco puro, aplicamos el respaldo de categorías
-                if font_hex == "#FFFFFF" or font_hex == "#000000": font_hex = obtener_color_borde_categoria(col)
+                except: font_hex = obtener_color_borde_categoria(col)
+                if font_hex in ["#FFFFFF", "#000000", "#BDBDBD", "000000"]: font_hex = obtener_color_borde_categoria(col)
                 colores_cambios_font[c_texto] = font_hex
 
         textos_hist = {}
@@ -175,15 +174,10 @@ def extraer_datos_puros(ruta_archivo):
             val_accion = ws.cell(row=row, column=2).value
             val_str = str(val_accion).strip() if val_accion else ""
             
-            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'):
-                break 
-                
+            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'): break 
             nueva_accion = detectar_accion_oficial(val_str)
-            if nueva_accion:
-                accion_actual = nueva_accion
-                
-            if not accion_actual:
-                continue 
+            if nueva_accion: accion_actual = nueva_accion
+            if not accion_actual: continue 
             
             for col in range(4, ws.max_column + 1):
                 val_cambio = ws.cell(row=2, column=col).value
@@ -252,20 +246,27 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
         else:
             peso_acciones = Counter([d['Acción Estratégica'] for d in df_final])
             peso_cambios = Counter([d['Cambio Esperado'] for d in df_final])
-            # Extracción del color de la letra almacenado
             borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in df_final}
             
+            min_peso = 1
+            max_peso = max(list(peso_acciones.values()) + list(peso_cambios.values()) + [1])
+            def calc_fs(peso):
+                if max_peso == min_peso: return 16
+                return int(16 + ((peso - min_peso) / (max_peso - min_peso)) * 24)
+
             net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124')
             net.set_options(f"""
-            var options = {{ "nodes": {{ "scaling": {{ "min": 15, "max": 45 }}, "margin": 12, "borderWidth": 4, "borderWidthSelected": 6 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
+            var options = {{ "nodes": {{ "margin": 12, "borderWidth": 4, "borderWidthSelected": 6 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
             """)
 
             for acc in set(d['Acción Estratégica'] for d in df_final):
-                net.add_node(acc, label=formatear_caja(acc, 35), shape='box', value=peso_acciones[acc], level=1 if vista_simplificada else 2, color={'border': '#003366', 'background': '#E3F2FD'}, font={'color': '#003366', 'face': 'sans-serif', 'bold': True})
+                fs = calc_fs(peso_acciones[acc])
+                net.add_node(acc, label=formatear_caja(acc, 35), shape='box', level=1 if vista_simplificada else 2, color={'border': '#003366', 'background': '#E3F2FD'}, font={'color': '#003366', 'face': 'sans-serif', 'bold': True, 'size': fs})
             
             for cam in set(d['Cambio Esperado'] for d in df_final):
+                fs = calc_fs(peso_cambios[cam])
                 color_letra_excel = borde_cambios_map.get(cam, '#BDBDBD')
-                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', value=peso_cambios[cam], level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': color_letra_excel}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True})
+                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': color_letra_excel}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True, 'size': fs})
 
             if vista_simplificada:
                 rutas = defaultdict(list)
@@ -277,8 +278,13 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                     curva = {"type": "straight"} if idx == 1 else {"type": "curvedCW", "roundness": 0.15 * (idx // 2) * (1 if idx % 2 == 0 else -1)}
                     net.add_edge(acc, cam, color=color, width=1.5 + (len(h_list)*1.5), title=f"Estado: {estado}\nHistorias: {', '.join(h_list)}", smooth=curva)
             else:
+                historias_unicas = set(d['Historia_Cod'] for d in df_final)
+                peso_historias = Counter([d['Historia_Cod'] for d in df_final])
+                for hist in historias_unicas:
+                    hist_corta = [d['Historia_Corta'] for d in df_final if d['Historia_Cod'] == hist][0]
+                    fs_h = calc_fs(peso_historias[hist])
+                    net.add_node(hist, label=hist_corta, color={'background': '#FFFFFF', 'border': '#E0E0E0'}, shape='ellipse', level=1, font={'size': fs_h})
                 for d in df_final:
-                    net.add_node(d['Historia_Cod'], label=d['Historia_Corta'], color={'background': '#FFFFFF', 'border': '#E0E0E0'}, shape='ellipse', level=1)
                     net.add_edge(d['Historia_Cod'], d['Acción Estratégica'], color='#E0E0E0')
                     net.add_edge(d['Acción Estratégica'], d['Cambio Esperado'], color=COLORES_HEX_PUROS.get(d['Estado'], '#000'), title=f"{d['Estado']}")
 
@@ -301,7 +307,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
 # ==========================================
 # PÁGINA 2 Y 3: LÓGICA DE ANALÍTICA Y ECOSISTEMA
 # ==========================================
-else:
+elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocurrencia"]:
     st.markdown("### 🎛️ Filtros Globales")
     col_fg1, col_fg2 = st.columns(2)
     with col_fg1:
@@ -341,15 +347,14 @@ else:
             if not lista_elementos: return None
             conteo = Counter(lista_elementos)
             items = sorted(conteo.items(), key=lambda x: x[1], reverse=False)
-            y_labels = [k[:60] + "..." if len(k) > 60 else k for k, v in items]
+            y_labels = ["<br>".join(textwrap.wrap(k, width=50)) for k, v in items]
             x_vals = [v for k, v in items]
             textos_completos = [k for k, v in items]
             fig = go.Figure(go.Bar(x=x_vals, y=y_labels, orientation='h', marker=dict(color=x_vals, colorscale=color_scale), customdata=textos_completos, hovertemplate="<b>%{customdata}</b><br>Frecuencia: %{x}<extra></extra>"))
-            fig.update_layout(xaxis_title=titulo_eje, yaxis_title="", margin=dict(l=0, r=0, t=0, b=0), height=300)
+            fig.update_layout(xaxis_title=titulo_eje, yaxis_title="", margin=dict(l=0, r=0, t=0, b=0), height=max(300, len(items)*40))
             return fig
 
         st.markdown("### 🏆 Enfoque Estratégico (Rankings Cruzados)")
-        st.markdown("#### 1. Panorama General (Lo que hacemos y lo que buscamos)")
         c_gen1, c_gen2 = st.columns(2)
         with c_gen1:
             fig1 = crear_grafico_ranking(datos_ana, 'Acción Estratégica', 'Blues', 'Número de Historias')
@@ -360,29 +365,25 @@ else:
             if fig2: st.plotly_chart(fig2, use_container_width=True)
             else: st.info("Sin datos.")
 
-        st.markdown("#### 2. Logros en Terreno (Solo Verificados e Incipientes)")
+        st.markdown("#### Logros en Terreno (Solo Verificados e Incipientes)")
         datos_logros = [d for d in datos_ana if d['Estado'] in ['Negro (Cambio)', 'Rojo (Incipiente)']]
         c_log1, c_log2 = st.columns(2)
         with c_log1:
             fig3 = crear_grafico_ranking(datos_logros, 'Acción Estratégica', 'Greens', 'Historias (Negras/Rojas)')
             if fig3: st.plotly_chart(fig3, use_container_width=True)
-            else: st.info("Sin datos.")
         with c_log2:
             fig4 = crear_grafico_ranking(datos_logros, 'Cambio Esperado', 'Greens', 'Historias (Negras/Rojas)')
             if fig4: st.plotly_chart(fig4, use_container_width=True)
-            else: st.info("Sin datos.")
 
-        st.markdown("#### 3. Intenciones a Futuro (Solo Naranjas)")
+        st.markdown("#### Intenciones a Futuro (Solo Naranjas)")
         datos_intenciones = [d for d in datos_ana if d['Estado'] == 'Naranja (Intención)']
         c_int1, c_int2 = st.columns(2)
         with c_int1:
             fig5 = crear_grafico_ranking(datos_intenciones, 'Acción Estratégica', 'Oranges', 'Historias (Naranjas)')
             if fig5: st.plotly_chart(fig5, use_container_width=True)
-            else: st.info("Sin datos.")
         with c_int2:
             fig6 = crear_grafico_ranking(datos_intenciones, 'Cambio Esperado', 'Oranges', 'Historias (Naranjas)')
             if fig6: st.plotly_chart(fig6, use_container_width=True)
-            else: st.info("Sin datos.")
 
         st.markdown("---")
         st.markdown("### 🌡️ Termómetros de Eficacia (Las 7 Tortas)")
@@ -405,24 +406,21 @@ else:
         st.markdown("---")
         st.markdown("### 🗺️ Densidad de Impacto: Acción vs Cambio")
         if datos_ana:
-            import pandas as pd
-            df_heat_temp = pd.DataFrame(datos_ana)
-            df_heat_temp['Accion_Corta'] = df_heat_temp['Acción Estratégica'].map(dict_acciones)
-            df_heat_temp['Cambio_Corto'] = df_heat_temp['Cambio Esperado'].map(dict_cambios)
+            conteo_cruces = Counter([(d['Acción Estratégica'], d['Cambio Esperado']) for d in datos_ana])
+            z_data, hover_data = [], []
+            y_labels = [dict_acciones[a] for a in acciones_unicas]
+            x_labels = [dict_cambios[c] for c in cambios_unicos]
             
-            heat_df = pd.crosstab(df_heat_temp['Accion_Corta'], df_heat_temp['Cambio_Corto'])
-            hover_text = []
-            for accion_corta in heat_df.index:
-                hover_row = []
-                for cambio_corto in heat_df.columns:
-                    acc_real = [k for k, v in dict_acciones.items() if v == accion_corta][0]
-                    cam_real = [k for k, v in dict_cambios.items() if v == cambio_corto][0]
-                    cant = heat_df.loc[accion_corta, cambio_corto]
-                    hover_row.append(f"<b>Acción:</b> {acc_real}<br><b>Cambio:</b> {cam_real}<br><b>Conexiones:</b> {cant}")
-                hover_text.append(hover_row)
+            for acc in acciones_unicas:
+                row_z, row_hover = [], []
+                for cam in cambios_unicos:
+                    val = conteo_cruces.get((acc, cam), 0)
+                    row_z.append(val)
+                    row_hover.append(f"<b>Acción:</b> {acc}<br><b>Cambio:</b> {cam}<br><b>Conexiones:</b> {val}")
+                z_data.append(row_z)
+                hover_data.append(row_hover)
 
-            fig_heat = px.imshow(heat_df, color_continuous_scale='YlGnBu', text_auto=True, aspect="auto")
-            fig_heat.update_traces(customdata=hover_text, hovertemplate="%{customdata}<extra></extra>")
+            fig_heat = go.Figure(data=go.Heatmap(z=z_data, x=x_labels, y=y_labels, colorscale='YlGnBu', text=z_data, texttemplate="%{text}", customdata=hover_data, hovertemplate="%{customdata}<extra></extra>"))
             fig_heat.update_layout(margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Cambios Esperados (C1, C2...)", yaxis_title="Acciones Estratégicas (A1, A2...)")
             st.plotly_chart(fig_heat, use_container_width=True)
             
@@ -567,3 +565,97 @@ else:
         with tab_c3:
             st.markdown("**Combinación Exitosa de Acciones + Cambios en la misma Iniciativa:**")
             algoritmo_mixto_veloz(datos_exitosos, 2, 20)
+
+# ==========================================
+# PÁGINA 4: FRENTE 2 (FÁBRICA DE PDF)
+# ==========================================
+elif pagina_actual == "🖨️ Generador de Fichas (Frente 2)":
+    
+    st.markdown("### 🖨️ Fábrica Automática de Fichas de Impresión")
+    st.info("Generador de resúmenes visuales para el Taller. Formato optimizado para **impresión en Tamaño Carta (2 iniciativas por página)**. El sistema congela la visualización de manera estática y omite los estados que no tienen conexiones.", icon="📄")
+    
+    if st.button("🚀 Generar y Descargar Documento PDF (Toma aprox 10 segundos)", use_container_width=True):
+        with st.spinner("Ensamblando páginas y trazando redes en PDF..."):
+            
+            borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in datos_list}
+            iniciativas = sorted(list(set(d['Iniciativa'] for d in datos_list)))
+            estados_orden = [
+                ('Negro (Cambio)', '#212121', 'Evidencia Verificada'),
+                ('Rojo (Incipiente)', '#D32F2F', 'Avances Incipientes'),
+                ('Naranja (Intención)', '#FF9800', 'Intenciones a Futuro'),
+                ('Morado (Estancado)', '#7B1FA2', 'Estancado o Bloqueado')
+            ]
+
+            pdf_buffer = io.BytesIO()
+            with PdfPages(pdf_buffer) as pdf:
+                plots_on_page = 0
+                fig, axs = plt.subplots(2, 1, figsize=(8.5, 11))
+
+                for ini in iniciativas:
+                    for est_nombre, est_color, est_label in estados_orden:
+                        d_filtrados = [d for d in datos_list if d['Iniciativa'] == ini and d['Estado'] == est_nombre]
+                        if not d_filtrados: continue
+
+                        ax = axs[plots_on_page]
+                        ax.set_title(f"Iniciativa: {ini}  |  Estado: {est_label}", fontsize=12, fontweight='bold', color='#003366', pad=10)
+
+                        acciones = list(set(d['Acción Estratégica'] for d in d_filtrados))
+                        cambios = list(set(d['Cambio Esperado'] for d in d_filtrados))
+
+                        max_nodes = max(len(acciones), len(cambios))
+                        if max_nodes == 0: max_nodes = 1
+
+                        def get_y(n, max_h):
+                            if n == 1: return [max_h / 2.0]
+                            step = max_h / (n - 1)
+                            return [max_h - i*step for i in range(n)]
+
+                        y_acc = get_y(len(acciones), max_nodes)
+                        y_cam = get_y(len(cambios), max_nodes)
+
+                        pos = {}
+                        for i, a in enumerate(acciones): pos[a] = (0, y_acc[i])
+                        for i, c in enumerate(cambios): pos[c] = (1, y_cam[i])
+
+                        G = nx.DiGraph()
+                        for d in d_filtrados: G.add_edge(d['Acción Estratégica'], d['Cambio Esperado'])
+
+                        nx.draw_networkx_edges(G, pos, ax=ax, edge_color=est_color, width=2.0, arrows=True, arrowsize=15, min_source_margin=15, min_target_margin=15)
+
+                        for node, (x, y) in pos.items():
+                            is_accion = (x == 0)
+                            txt = "\n".join(textwrap.wrap(node, width=45 if is_accion else 40))
+                            fc = "#E3F2FD" if is_accion else "#FFFFFF"
+                            ec = "#003366" if is_accion else borde_cambios_map.get(node, '#BDBDBD')
+
+                            ax.text(x, y, txt, fontsize=8, ha='center', va='center',
+                                    bbox=dict(boxstyle="round,pad=0.5", facecolor=fc, edgecolor=ec, linewidth=2.5),
+                                    zorder=3)
+
+                        ax.set_xlim(-0.5, 1.5)
+                        y_pad = max_nodes * 0.15 if max_nodes > 1 else 1
+                        ax.set_ylim(-y_pad, max_nodes + y_pad)
+                        ax.axis('off')
+
+                        plots_on_page += 1
+                        if plots_on_page == 2:
+                            plt.tight_layout(pad=3.0)
+                            pdf.savefig(fig)
+                            plt.close(fig)
+                            fig, axs = plt.subplots(2, 1, figsize=(8.5, 11))
+                            plots_on_page = 0
+
+                if plots_on_page == 1:
+                    axs[1].axis('off')
+                    plt.tight_layout(pad=3.0)
+                    pdf.savefig(fig)
+                    plt.close(fig)
+
+        st.success("¡Documento PDF ensamblado con éxito! Clic abajo para guardarlo e imprimirlo.")
+        st.download_button(
+            label="⬇️ Descargar Fichas_Taller.pdf",
+            data=pdf_buffer.getvalue(),
+            file_name="Fichas_Taller.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
