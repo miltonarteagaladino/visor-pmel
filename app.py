@@ -3,7 +3,6 @@ import re
 import textwrap
 import itertools
 from collections import Counter, defaultdict
-import pandas as pd
 import streamlit as st
 import openpyxl
 import plotly.graph_objects as go
@@ -11,7 +10,7 @@ import plotly.express as px
 from pyvis.network import Network
 import streamlit.components.v1 as components
 
-# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH PARA MAC)
+# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH)
 os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
 os.environ["STREAMLIT_SERVER_MAX_MESSAGE_SIZE"] = "200"
 
@@ -95,10 +94,32 @@ def obtener_estado_color(cell):
     except: pass
     return 'Negro (Cambio)'
 
+# ASIGNACIÓN DE COLORES NATIVA (Bypass a los Temas de Excel)
+def obtener_color_borde_categoria(col_index):
+    # Colores exactos basados en la estructura de la Matriz
+    if col_index == 4: return "#9C27B0" # Lila (No en estrategia)
+    elif 5 <= col_index <= 10: return "#C0CA33" # Verde Limón (Área de Interés)
+    elif 11 <= col_index <= 18: return "#D81B60" # Magenta (Transversales)
+    elif 19 <= col_index <= 22: return "#FFB300" # Amarillo (Oportunidades)
+    elif 23 <= col_index <= 26: return "#4CAF50" # Verde Pistacho (Sistémicos)
+    return "#BDBDBD" # Gris por defecto
+
+def limpiar_codigo_historia(codigo):
+    c_limpio = str(codigo).strip().upper().replace(" ", "")
+    c_limpio = c_limpio.replace(".", "-").replace("--", "-")
+    if "02EM-FC" in c_limpio: c_limpio = c_limpio.replace("02EM-FC", "02-EM-FC")
+    return c_limpio
+
 def acortar_codigo(codigo):
     partes = codigo.split('-')
     if len(partes) >= 3: return f"{partes[1]}{partes[2]}"
     return codigo
+
+def extraer_corazon_codigo(codigo):
+    c_limpio = limpiar_codigo_historia(codigo)
+    match = re.search(r'([A-Z]+-\d+)', c_limpio)
+    if match: return match.group(1)
+    return c_limpio
 
 def formatear_caja(texto, ancho=35):
     lineas = textwrap.wrap(texto, width=ancho)
@@ -120,16 +141,14 @@ def extraer_datos_puros(ruta_archivo):
             cod = ws.cell(row=row, column=2).value
             txt = ws.cell(row=row, column=3).value
             if cod and isinstance(cod, str) and '-' in cod:
-                c_limpio = re.search(r'([A-Z]+-\d+)', str(cod)).group(1) if re.search(r'([A-Z]+-\d+)', str(cod)) else str(cod).strip()
+                c_limpio = extraer_corazon_codigo(cod)
                 textos_hist[c_limpio] = str(txt).strip() if txt else "Sin narrativa documentada."
 
-        # ALGORITMO CON MEMORIA DE CELDAS COMBINADAS
         accion_actual = None
         for row in range(3, ws.max_row + 1):
             val_accion = ws.cell(row=row, column=2).value
             val_str = str(val_accion).strip() if val_accion else ""
             
-            # Cortafuegos: Dejar de leer conexiones si llegamos a los antecedentes
             if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'):
                 break 
                 
@@ -140,7 +159,6 @@ def extraer_datos_puros(ruta_archivo):
             if not accion_actual:
                 continue 
             
-            # Escaneo de columnas de cambio (sin límites)
             for col in range(4, ws.max_column + 1):
                 val_cambio = ws.cell(row=2, column=col).value
                 if not val_cambio or str(val_cambio).strip() == 'None': continue
@@ -154,12 +172,16 @@ def extraer_datos_puros(ruta_archivo):
                 if val_conexion and isinstance(val_conexion, str) and '-' in val_conexion:
                     codigos = [cd.strip() for cd in re.split(r'[\n,;\s]+', val_conexion) if cd.strip() and '-' in cd]
                     for codigo in codigos:
-                        c_corto = re.search(r'([A-Z]+-\d+)', str(codigo)).group(1) if re.search(r'([A-Z]+-\d+)', str(codigo)) else str(codigo).strip()
+                        cod_limpio = limpiar_codigo_historia(codigo)
+                        c_corto = extraer_corazon_codigo(cod_limpio)
                         estado_nom = obtener_estado_color(cell_conexion)
+                        color_cat = obtener_color_borde_categoria(col) # Obtiene el color de la columna
+                        
                         datos.append({
-                            'Área': extraer_area_codigo(codigo), 'Iniciativa': iniciativa, 'Acción Estratégica': accion_actual,
-                            'Cambio Esperado': cambio_texto, 'Historia_Cod': codigo, 'Historia_Corta': acortar_codigo(codigo),
-                            'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 'Estado': estado_nom
+                            'Área': extraer_area_codigo(cod_limpio), 'Iniciativa': iniciativa, 'Acción Estratégica': accion_actual,
+                            'Cambio Esperado': cambio_texto, 'Historia_Cod': cod_limpio, 'Historia_Corta': acortar_codigo(cod_limpio),
+                            'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 'Estado': estado_nom,
+                            'Color_Borde': color_cat
                         })
     return datos
 
@@ -204,16 +226,19 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
         else:
             peso_acciones = Counter([d['Acción Estratégica'] for d in df_final])
             peso_cambios = Counter([d['Cambio Esperado'] for d in df_final])
+            borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in df_final}
+            
             net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124')
             net.set_options(f"""
-            var options = {{ "nodes": {{ "scaling": {{ "min": 15, "max": 45 }}, "margin": 12 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
+            var options = {{ "nodes": {{ "scaling": {{ "min": 15, "max": 45 }}, "margin": 12, "borderWidth": 4, "borderWidthSelected": 6 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
             """)
 
             for acc in set(d['Acción Estratégica'] for d in df_final):
                 net.add_node(acc, label=formatear_caja(acc, 35), shape='box', value=peso_acciones[acc], level=1 if vista_simplificada else 2, color={'border': '#003366', 'background': '#E3F2FD'}, font={'color': '#003366', 'face': 'sans-serif', 'bold': True})
+            
             for cam in set(d['Cambio Esperado'] for d in df_final):
-                est_dom = Counter([d['Estado'] for d in df_final if d['Cambio Esperado'] == cam]).most_common(1)[0][0]
-                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', value=peso_cambios[cam], level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': COLORES_HEX_PUROS.get(est_dom, '#000')}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True})
+                color_borde_excel = borde_cambios_map.get(cam, '#BDBDBD')
+                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', value=peso_cambios[cam], level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': color_borde_excel}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True})
 
             if vista_simplificada:
                 rutas = defaultdict(list)
@@ -226,7 +251,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                     net.add_edge(acc, cam, color=color, width=1.5 + (len(h_list)*1.5), title=f"Estado: {estado}\nHistorias: {', '.join(h_list)}", smooth=curva)
             else:
                 for d in df_final:
-                    net.add_node(d['Historia_Cod'], label=d['Historia_Corta'], color={'background': '#FFFFFF', 'border': '#BDBDBD'}, shape='ellipse', level=1)
+                    net.add_node(d['Historia_Cod'], label=d['Historia_Corta'], color={'background': '#FFFFFF', 'border': '#E0E0E0'}, shape='ellipse', level=1)
                     net.add_edge(d['Historia_Cod'], d['Acción Estratégica'], color='#E0E0E0')
                     net.add_edge(d['Acción Estratégica'], d['Cambio Esperado'], color=COLORES_HEX_PUROS.get(d['Estado'], '#000'), title=f"{d['Estado']}")
 
@@ -263,7 +288,6 @@ else:
     
     if pagina_actual == "📊 Analítica de Portafolio":
         
-        # --- PANEL DE MÉTRICAS ---
         st.markdown("#### 📊 Métricas de Validación del Portafolio")
         if datos_ana:
             num_ini = len(set(d['Iniciativa'] for d in datos_ana))
@@ -484,7 +508,7 @@ else:
             for combo, grupos_list in ordenados[:30]:
                 freq = len(grupos_list)
                 tamano = len(combo)
-                lista_md = "\n".join([f"  {item}" for item in combo])
+                lista_md = "\n".join([f"  {item}" for item in sorted(list(combo))])
                 donde_se_vio = ", ".join(sorted(grupos_list))
                 st.warning(f"**[Ecosistema de {tamano} Nodos] - Compartido con éxito por {freq} Iniciativas:**\n\n{lista_md}", icon="🌍")
                 with st.expander("👁️ Ver cuáles iniciativas comparten este modelo"):
