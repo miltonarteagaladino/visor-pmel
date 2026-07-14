@@ -3,6 +3,7 @@ import re
 import textwrap
 import itertools
 from collections import Counter, defaultdict
+import pandas as pd
 import streamlit as st
 import openpyxl
 import plotly.graph_objects as go
@@ -10,7 +11,7 @@ import plotly.express as px
 from pyvis.network import Network
 import streamlit.components.v1 as components
 
-# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH)
+# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH PARA MAC)
 os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
 os.environ["STREAMLIT_SERVER_MAX_MESSAGE_SIZE"] = "200"
 
@@ -74,7 +75,10 @@ def detectar_accion_oficial(texto):
     if "capacidad" in t or "lider" in t: return "6. Fortalecemos capacidades (liderazgo)"
     return None
 
-def obtener_estado_color(cell):
+def obtener_estado_color(cell, codigo_historia):
+    cod_upper = str(codigo_historia).upper()
+    if "CMB-09" in cod_upper or "CMB-10" in cod_upper or "LT-03" in cod_upper or "CV-08" in cod_upper or "LT-01" in cod_upper or "LT-02" in cod_upper:
+        return 'Morado (Estancado)'
     try:
         if cell.font and cell.font.color:
             if cell.font.color.type == 'theme' and cell.font.color.theme == 5: return 'Naranja (Intención)'
@@ -94,15 +98,14 @@ def obtener_estado_color(cell):
     except: pass
     return 'Negro (Cambio)'
 
-# ASIGNACIÓN DE COLORES NATIVA (Bypass a los Temas de Excel)
 def obtener_color_borde_categoria(col_index):
-    # Colores exactos basados en la estructura de la Matriz
-    if col_index == 4: return "#9C27B0" # Lila (No en estrategia)
-    elif 5 <= col_index <= 10: return "#C0CA33" # Verde Limón (Área de Interés)
-    elif 11 <= col_index <= 18: return "#D81B60" # Magenta (Transversales)
-    elif 19 <= col_index <= 22: return "#FFB300" # Amarillo (Oportunidades)
-    elif 23 <= col_index <= 26: return "#4CAF50" # Verde Pistacho (Sistémicos)
-    return "#BDBDBD" # Gris por defecto
+    # Respaldo de colores por posición de columna si el font falla
+    if col_index == 4: return "#9C27B0" # Lila 
+    elif 5 <= col_index <= 10: return "#C0CA33" # Verde Limón
+    elif 11 <= col_index <= 18: return "#D81B60" # Magenta
+    elif 19 <= col_index <= 22: return "#FFB300" # Amarillo
+    elif 23 <= col_index <= 26: return "#4CAF50" # Verde Pistacho
+    return "#BDBDBD"
 
 def limpiar_codigo_historia(codigo):
     c_limpio = str(codigo).strip().upper().replace(" ", "")
@@ -136,6 +139,29 @@ def extraer_datos_puros(ruta_archivo):
         ws = wb[sheet_name]
         iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
         
+        # Mapeo de colores de la LETRA (Font) en los Cambios Esperados (Fila 2)
+        colores_cambios_font = {}
+        for col in range(4, ws.max_column + 1):
+            val_cambio = ws.cell(row=2, column=col).value
+            if val_cambio and str(val_cambio).strip() != 'None':
+                c_texto = str(val_cambio).replace('\n', ' ').strip()
+                cell_head = ws.cell(row=2, column=col)
+                font_hex = "#BDBDBD" 
+                try:
+                    if cell_head.font and cell_head.font.color:
+                        if cell_head.font.color.type == 'rgb':
+                            c_rgb = str(cell_head.font.color.rgb)
+                            if c_rgb and c_rgb != '00000000':
+                                font_hex = "#" + c_rgb[-6:]
+                        elif cell_head.font.color.type == 'theme':
+                            font_hex = obtener_color_borde_categoria(col)
+                except: 
+                    font_hex = obtener_color_borde_categoria(col)
+                
+                # Si por alguna razón es negro/blanco puro, aplicamos el respaldo de categorías
+                if font_hex == "#FFFFFF" or font_hex == "#000000": font_hex = obtener_color_borde_categoria(col)
+                colores_cambios_font[c_texto] = font_hex
+
         textos_hist = {}
         for row in range(10, ws.max_row + 1):
             cod = ws.cell(row=row, column=2).value
@@ -174,14 +200,14 @@ def extraer_datos_puros(ruta_archivo):
                     for codigo in codigos:
                         cod_limpio = limpiar_codigo_historia(codigo)
                         c_corto = extraer_corazon_codigo(cod_limpio)
-                        estado_nom = obtener_estado_color(cell_conexion)
-                        color_cat = obtener_color_borde_categoria(col) # Obtiene el color de la columna
+                        estado_nom = obtener_estado_color(cell_conexion, cod_limpio)
+                        color_fuente = colores_cambios_font.get(cambio_texto, "#BDBDBD")
                         
                         datos.append({
                             'Área': extraer_area_codigo(cod_limpio), 'Iniciativa': iniciativa, 'Acción Estratégica': accion_actual,
                             'Cambio Esperado': cambio_texto, 'Historia_Cod': cod_limpio, 'Historia_Corta': acortar_codigo(cod_limpio),
                             'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 'Estado': estado_nom,
-                            'Color_Borde': color_cat
+                            'Color_Borde': color_fuente
                         })
     return datos
 
@@ -226,6 +252,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
         else:
             peso_acciones = Counter([d['Acción Estratégica'] for d in df_final])
             peso_cambios = Counter([d['Cambio Esperado'] for d in df_final])
+            # Extracción del color de la letra almacenado
             borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in df_final}
             
             net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124')
@@ -237,8 +264,8 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 net.add_node(acc, label=formatear_caja(acc, 35), shape='box', value=peso_acciones[acc], level=1 if vista_simplificada else 2, color={'border': '#003366', 'background': '#E3F2FD'}, font={'color': '#003366', 'face': 'sans-serif', 'bold': True})
             
             for cam in set(d['Cambio Esperado'] for d in df_final):
-                color_borde_excel = borde_cambios_map.get(cam, '#BDBDBD')
-                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', value=peso_cambios[cam], level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': color_borde_excel}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True})
+                color_letra_excel = borde_cambios_map.get(cam, '#BDBDBD')
+                net.add_node(cam, label=formatear_caja(cam, 35), shape='box', value=peso_cambios[cam], level=2 if vista_simplificada else 3, color={'background': '#FFFFFF', 'border': color_letra_excel}, font={'color': '#212121', 'face': 'sans-serif', 'bold': True})
 
             if vista_simplificada:
                 rutas = defaultdict(list)
@@ -378,21 +405,24 @@ else:
         st.markdown("---")
         st.markdown("### 🗺️ Densidad de Impacto: Acción vs Cambio")
         if datos_ana:
-            conteo_cruces = Counter([(d['Acción Estratégica'], d['Cambio Esperado']) for d in datos_ana])
-            z_data, hover_data = [], []
-            y_labels = [dict_acciones[a] for a in acciones_unicas]
-            x_labels = [dict_cambios[c] for c in cambios_unicos]
+            import pandas as pd
+            df_heat_temp = pd.DataFrame(datos_ana)
+            df_heat_temp['Accion_Corta'] = df_heat_temp['Acción Estratégica'].map(dict_acciones)
+            df_heat_temp['Cambio_Corto'] = df_heat_temp['Cambio Esperado'].map(dict_cambios)
             
-            for acc in acciones_unicas:
-                row_z, row_hover = [], []
-                for cam in cambios_unicos:
-                    val = conteo_cruces.get((acc, cam), 0)
-                    row_z.append(val)
-                    row_hover.append(f"<b>Acción:</b> {acc}<br><b>Cambio:</b> {cam}<br><b>Conexiones:</b> {val}")
-                z_data.append(row_z)
-                hover_data.append(row_hover)
+            heat_df = pd.crosstab(df_heat_temp['Accion_Corta'], df_heat_temp['Cambio_Corto'])
+            hover_text = []
+            for accion_corta in heat_df.index:
+                hover_row = []
+                for cambio_corto in heat_df.columns:
+                    acc_real = [k for k, v in dict_acciones.items() if v == accion_corta][0]
+                    cam_real = [k for k, v in dict_cambios.items() if v == cambio_corto][0]
+                    cant = heat_df.loc[accion_corta, cambio_corto]
+                    hover_row.append(f"<b>Acción:</b> {acc_real}<br><b>Cambio:</b> {cam_real}<br><b>Conexiones:</b> {cant}")
+                hover_text.append(hover_row)
 
-            fig_heat = go.Figure(data=go.Heatmap(z=z_data, x=x_labels, y=y_labels, colorscale='YlGnBu', text=z_data, texttemplate="%{text}", customdata=hover_data, hovertemplate="%{customdata}<extra></extra>"))
+            fig_heat = px.imshow(heat_df, color_continuous_scale='YlGnBu', text_auto=True, aspect="auto")
+            fig_heat.update_traces(customdata=hover_text, hovertemplate="%{customdata}<extra></extra>")
             fig_heat.update_layout(margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Cambios Esperados (C1, C2...)", yaxis_title="Acciones Estratégicas (A1, A2...)")
             st.plotly_chart(fig_heat, use_container_width=True)
             
