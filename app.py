@@ -2,7 +2,6 @@ import os
 import re
 import textwrap
 import itertools
-import io
 from collections import Counter, defaultdict
 import pandas as pd
 import streamlit as st
@@ -11,9 +10,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pyvis.network import Network
 import streamlit.components.v1 as components
-import matplotlib.pyplot as plt
-import networkx as nx
-from matplotlib.backends.backend_pdf import PdfPages
 
 # BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH PARA MAC)
 os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
@@ -41,11 +37,9 @@ with st.sidebar:
     pagina_actual = st.radio("Ir a:", [
         "🕸️ Mapa Sistémico (Redes)", 
         "📊 Analítica de Portafolio", 
-        "🧬 Patrones de Co-Ocurrencia",
-        "🖨️ Generador de Fichas (Frente 2)"
+        "🧬 Patrones de Co-Ocurrencia"
     ])
     st.markdown("---")
-    st.caption("Visor Sistémico PMEL v3.0\nArquitectura por Sufijos")
 
 titulo_limpio = pagina_actual.split(" ", 1)[1] if " " in pagina_actual else pagina_actual
 st.markdown(f"""
@@ -94,7 +88,6 @@ def limpiar_codigo_historia(codigo):
     if "02EM-FC" in c_limpio: c_limpio = c_limpio.replace("02EM-FC", "02-EM-FC")
     return c_limpio
 
-# TAXONOMÍA METODOLÓGICA OFICIAL DE LA FUNDACIÓN
 def obtener_estado_por_sufijo(codigo):
     cod_upper = str(codigo).upper().strip()
     if cod_upper.endswith("-EC"): return 'Negro (Ejemplo de Cambio)'
@@ -105,14 +98,15 @@ def obtener_estado_por_sufijo(codigo):
 
 def extraer_corazon_codigo(codigo):
     c_limpio = limpiar_codigo_historia(codigo)
-    match = re.search(r'([A-Z]+-\d+)', c_limpio)
-    base = match.group(1) if match else c_limpio
+    if c_limpio.endswith(("-EC", "-IC", "-EE", "-BC")):
+        c_limpio = c_limpio[:-3]
+        
+    match = re.search(r'([A-Z]+-\w+-\d+-[A-Z]+-[A-Z]+)', c_limpio)
+    if match: return match.group(1)
     
-    match_full = re.search(r'([A-Z]+-\w+-\d+-[A-Z]+-[A-Z]+)', c_limpio)
-    if match_full: return match_full.group(1)
+    match2 = re.search(r'([A-Z]+-\d+)', c_limpio)
+    if match2: return match2.group(1)
     
-    if c_limpio.endswith("-EC") or c_limpio.endswith("-IC") or c_limpio.endswith("-EE") or c_limpio.endswith("-BC"):
-        return c_limpio[:-3]
     return c_limpio
 
 def acortar_codigo(codigo):
@@ -126,7 +120,8 @@ def formatear_caja(texto, ancho=35):
     if len(lineas) > 3: return "\n".join(lineas[:3]) + "..."
     return "\n".join(lineas)
 
-@st.cache_resource
+# EXTRACCIÓN ESTRUCTURAL REVISADA (SIN DEPENDENCIAS VISUALES EXCEL)
+@st.cache_data
 def extraer_datos_puros(ruta_archivo):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
     datos = []
@@ -135,28 +130,43 @@ def extraer_datos_puros(ruta_archivo):
     for sheet_name in pestañas:
         ws = wb[sheet_name]
         iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
-        fila_cabeceras = 12
         
+        # BÚSQUEDA DINÁMICA DE ENCABEZADOS
+        fila_cabeceras = -1
+        for r in range(1, min(30, ws.max_row + 1)):
+            val = ws.cell(row=r, column=1).value
+            if val and str(val).strip().lower().startswith("acciones est"):
+                fila_cabeceras = r
+                break
+                
+        if fila_cabeceras == -1:
+            continue
+            
         colores_cambios_font = {}
-        for col in range(4, ws.max_column + 1):
+        for col in range(2, ws.max_column + 1):
             val_cambio = ws.cell(row=fila_cabeceras, column=col).value
             if val_cambio and str(val_cambio).strip() != 'None':
                 c_texto = str(val_cambio).replace('\n', ' ').strip()
                 colores_cambios_font[c_texto] = obtener_color_borde_categoria(col)
 
+        # LECTURA DE HISTORIAS (ENCIMA DE LA CABECERA)
         textos_hist = {}
-        for row in range(3, fila_cabeceras - 1):
+        for row in range(1, fila_cabeceras):
             cod = ws.cell(row=row, column=1).value
             txt = ws.cell(row=row, column=2).value
             if cod and isinstance(cod, str) and '-' in cod:
                 c_limpio = extraer_corazon_codigo(cod)
                 textos_hist[c_limpio] = str(txt).strip() if txt else "Sin narrativa documentada."
 
+        # LECTURA DE ACCIONES Y CONEXIONES (DEBAJO DE LA CABECERA)
         accion_actual = None
         for row in range(fila_cabeceras + 1, ws.max_row + 1):
             val_accion = ws.cell(row=row, column=1).value
             val_str = str(val_accion).strip() if val_accion else ""
             
+            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'):
+                break 
+                
             nueva_accion = detectar_accion_oficial(val_str)
             if nueva_accion:
                 accion_actual = nueva_accion
@@ -164,7 +174,7 @@ def extraer_datos_puros(ruta_archivo):
             if not accion_actual:
                 continue 
             
-            for col in range(4, ws.max_column + 1):
+            for col in range(2, ws.max_column + 1):
                 val_cambio = ws.cell(row=fila_cabeceras, column=col).value
                 if not val_cambio or str(val_cambio).strip() == 'None': continue
                 
@@ -183,9 +193,14 @@ def extraer_datos_puros(ruta_archivo):
                         color_fuente = colores_cambios_font.get(cambio_texto, "#BDBDBD")
                         
                         datos.append({
-                            'Área': extraer_area_codigo(cod_limpio), 'Iniciativa': iniciativa, 'Acción Estratégica': accion_actual,
-                            'Cambio Esperado': cambio_texto, 'Historia_Cod': cod_limpio, 'Historia_Corta': acortar_codigo(cod_limpio),
-                            'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 'Estado': estado_nom,
+                            'Área': extraer_area_codigo(c_corto), 
+                            'Iniciativa': iniciativa, 
+                            'Acción Estratégica': accion_actual,
+                            'Cambio Esperado': cambio_texto, 
+                            'Historia_Cod': c_corto, 
+                            'Historia_Corta': acortar_codigo(c_corto),
+                            'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 
+                            'Estado': estado_nom,
                             'Color_Borde': color_fuente
                         })
     return datos
@@ -193,12 +208,21 @@ def extraer_datos_puros(ruta_archivo):
 # LECTOR CENTRAL
 datos_list = extraer_datos_puros("Matriz.xlsx")
 
+# --- DIAGNÓSTICO EN BARRA LATERAL ---
+with st.sidebar:
+    st.markdown("### 🛠️ Diagnóstico")
+    st.write("Registros:", len(datos_list))
+    st.write("Historias:", len(set(d["Historia_Cod"] for d in datos_list)))
+    st.write("Acciones:", len(set(d["Acción Estratégica"] for d in datos_list)))
+    st.write("Cambios:", len(set(d["Cambio Esperado"] for d in datos_list)))
+    st.write("Iniciativas:", len(set(d["Iniciativa"] for d in datos_list)))
+    st.markdown("---")
+
 acciones_unicas = sorted(list(set(d['Acción Estratégica'] for d in datos_list)))
 cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-# DICCIONARIOS ACTUALIZADOS CON LA TAXONOMÍA METODOLÓGICA
 COLORES_ESTADO = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#351C75'}
 COLORES_HEX_PUROS = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#7B1FA2'}
 
@@ -554,97 +578,3 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
         with tab_c3:
             st.markdown("**Combinación Exitosa de Acciones + Cambios en la misma Iniciativa:**")
             algoritmo_mixto_veloz(datos_exitosos, 2, 20)
-
-# ==========================================
-# PÁGINA 4: FRENTE 2 (FÁBRICA DE PDF)
-# ==========================================
-elif pagina_actual == "🖨️ Generador de Fichas (Frente 2)":
-    
-    st.markdown("### 🖨️ Fábrica Automática de Fichas de Impresión")
-    st.info("Generador de resúmenes visuales para el Taller. Formato optimizado para **impresión en Tamaño Carta (2 iniciativas por página)**.", icon="📄")
-    
-    if st.button("🚀 Generar y Descargar Documento PDF (Toma aprox 10 segundos)", use_container_width=True):
-        with st.spinner("Ensamblando páginas y trazando redes en PDF..."):
-            
-            borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in datos_list}
-            iniciativas = sorted(list(set(d['Iniciativa'] for d in datos_list)))
-            estados_orden = [
-                ('Negro (Ejemplo de Cambio)', '#212121', 'Ejemplo de Cambio (Evidencia)'),
-                ('Rojo (Señal de Buen Camino)', '#D32F2F', 'Señal de Buen Camino (Progreso)'),
-                ('Naranja (Intención de Cambio)', '#FF9800', 'Intención de Cambio'),
-                ('Morado (Efecto Estancado)', '#7B1FA2', 'Efecto Estancado (Fallido)')
-            ]
-
-            pdf_buffer = io.BytesIO()
-            with PdfPages(pdf_buffer) as pdf:
-                plots_on_page = 0
-                fig, axs = plt.subplots(2, 1, figsize=(8.5, 11))
-
-                for ini in iniciativas:
-                    for est_nombre, est_color, est_label in estados_orden:
-                        d_filtrados = [d for d in datos_list if d['Iniciativa'] == ini and d['Estado'] == est_nombre]
-                        if not d_filtrados: continue
-
-                        ax = axs[plots_on_page]
-                        ax.set_title(f"Iniciativa: {ini}\nEstado: {est_label}", fontsize=12, fontweight='bold', color='#003366', pad=10)
-
-                        acciones = list(set(d['Acción Estratégica'] for d in d_filtrados))
-                        cambios = list(set(d['Cambio Esperado'] for d in d_filtrados))
-
-                        max_nodes = max(len(acciones), len(cambios))
-                        if max_nodes == 0: max_nodes = 1
-
-                        def get_y(n, max_h):
-                            if n == 1: return [max_h / 2.0]
-                            step = max_h / (n - 1)
-                            return [max_h - i*step for i in range(n)]
-
-                        y_acc = get_y(len(acciones), max_nodes)
-                        y_cam = get_y(len(cambios), max_nodes)
-
-                        pos = {}
-                        for i, a in enumerate(acciones): pos[a] = (0, y_acc[i])
-                        for i, c in enumerate(cambios): pos[c] = (1, y_cam[i])
-
-                        G = nx.DiGraph()
-                        for d in d_filtrados: G.add_edge(d['Acción Estratégica'], d['Cambio Esperado'])
-
-                        nx.draw_networkx_edges(G, pos, ax=ax, edge_color=est_color, width=2.0, arrows=True, arrowsize=15, min_source_margin=15, min_target_margin=15)
-
-                        for node, (x, y) in pos.items():
-                            is_accion = (x == 0)
-                            txt = "\n".join(textwrap.wrap(node, width=45 if is_accion else 40))
-                            fc = "#E3F2FD" if is_accion else "#FFFFFF"
-                            ec = "#003366" if is_accion else borde_cambios_map.get(node, '#BDBDBD')
-
-                            ax.text(x, y, txt, fontsize=8, ha='center', va='center',
-                                    bbox=dict(boxstyle="round,pad=0.5", facecolor=fc, edgecolor=ec, linewidth=2.5),
-                                    zorder=3)
-
-                        ax.set_xlim(-0.5, 1.5)
-                        y_pad = max_nodes * 0.15 if max_nodes > 1 else 1
-                        ax.set_ylim(-y_pad, max_nodes + y_pad)
-                        ax.axis('off')
-
-                        plots_on_page += 1
-                        if plots_on_page == 2:
-                            plt.tight_layout(pad=3.0)
-                            pdf.savefig(fig)
-                            plt.close(fig)
-                            fig, axs = plt.subplots(2, 1, figsize=(8.5, 11))
-                            plots_on_page = 0
-
-                if plots_on_page == 1:
-                    axs[1].axis('off')
-                    plt.tight_layout(pad=3.0)
-                    pdf.savefig(fig)
-                    plt.close(fig)
-
-        st.success("¡Documento PDF ensamblado con éxito! Clic abajo para guardarlo e imprimirlo.")
-        st.download_button(
-            label="⬇️ Descargar Fichas_Taller.pdf",
-            data=pdf_buffer.getvalue(),
-            file_name="Fichas_Taller.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
