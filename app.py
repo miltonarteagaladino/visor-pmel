@@ -38,7 +38,8 @@ with st.sidebar:
         "🕸️ Mapa Sistémico (Redes)", 
         "📊 Analítica de Portafolio", 
         "🧬 Patrones de Co-Ocurrencia",
-        "📈 Reporte Ejecutivo MEL"
+        "📈 Reporte Ejecutivo MEL",
+        "📊 Indicadores Ejecutivos para Dirección"
     ])
     st.markdown("---")
 
@@ -50,7 +51,7 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 2. DECODIFICADORES ---
+# --- 2. DECODIFICADORES GLOBALES ---
 MAPA_AREAS = {
     'ED': 'Educación', 'EM': 'Empleo', 'LE': 'Libre Elección', 'IN': 'Incidencia',
     'AA': 'Aprendizaje/Adaptación', 'TC': 'Transformación Cultural', 'CC': 'Comunicaciones',
@@ -123,7 +124,6 @@ def formatear_caja(texto, ancho=35):
 def extraer_universo_y_conexiones(ruta_archivo):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
     
-    # 3.1 Cargar Matriz Portafolio (Regla de oro de los 44)
     catalogo_iniciativas = []
     map_portafolio = {}
     map_nombre = {}
@@ -162,7 +162,6 @@ def extraer_universo_y_conexiones(ruta_archivo):
             if sin_prefijo in map_portafolio: return map_portafolio[sin_prefijo], map_nombre.get(sin_prefijo, sheet_name)
         return "Sin Portafolio Asignado", sheet_name
 
-    # 3.2 Extraer Conexiones
     datos = []
     pestañas = [sht for sht in wb.sheetnames if sht.startswith('I-') or sht.startswith('M-') or sht.startswith('B-') or sht.startswith('H-')]
     
@@ -179,7 +178,6 @@ def extraer_universo_y_conexiones(ruta_archivo):
         if fila_cabeceras == -1: continue
             
         colores_cambios_font = {}
-        # Candado máximo de 15 cambios reales
         for col in range(3, min(18, ws.max_column + 1)):
             val_cambio = ws.cell(row=fila_cabeceras, column=col).value
             if val_cambio and str(val_cambio).strip() not in ['None', '']:
@@ -253,11 +251,11 @@ cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-# COLORES DE MAPA Y ANALÍTICA GENERAL (Mantiene lógica visual histórica)
+# COLORES GENERALES 
 COLORES_ESTADO = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#351C75'}
 COLORES_HEX_PUROS = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#7B1FA2'}
 
-# COLORES EXCLUSIVOS PARA REPORTE MEL (Ajuste 1: Lógica ejecutiva)
+# COLORES EXCLUSIVOS PARA REPORTE MEL Y DIRECTIVO (Ajuste Visual)
 MEL_COLORS = {
     'Negro (Ejemplo de Cambio)': '#4CAF50', # Verde
     'Rojo (Señal de Buen Camino)': '#FF9800', # Naranja
@@ -268,7 +266,7 @@ MEL_COLORS = {
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS (Basado en df_catalogo)
 # ==========================================
-if pagina_actual != "📈 Reporte Ejecutivo MEL":
+if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecutivos para Dirección"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
     with col_fg1:
@@ -369,7 +367,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 for d in info_h: st.markdown(f"- ➔ {d['Cambio Esperado']} (**{d['Estado']}**)")
 
 # ==========================================
-# PÁGINA 2: ANALÍTICA DE PORTAFOLIO (Original intacto)
+# PÁGINA 2 Y 3: LÓGICA DE ANALÍTICA EXISTENTE
 # ==========================================
 elif pagina_actual == "📊 Analítica de Portafolio":
     
@@ -477,12 +475,9 @@ elif pagina_actual == "📊 Analítica de Portafolio":
         fig_heat.update_layout(margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Cambios Esperados (C1, C2...)", yaxis_title="Acciones Estratégicas (A1, A2...)", template="plotly_white")
         st.plotly_chart(fig_heat, use_container_width=True)
 
-# ==========================================
-# PÁGINA 3: PATRONES DE CO-OCURRENCIA (Original intacto)
-# ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
     st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
-    datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
+    datos_exitosos = [d for d in datos_list if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
 
     if not datos_exitosos:
         st.warning("El portafolio seleccionado no tiene conexiones exitosas.")
@@ -646,15 +641,16 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     c_a1_1, c_a1_2, c_a1_3 = st.columns(3)
     with c_a1_1:
         fig_a1_1 = px.bar(dist_port, x='Portafolio', y='Iniciativas', title='Iniciativas por Portafolio', text_auto=True, color_discrete_sequence=['#003366'])
-        fig_a1_1.update_layout(template="plotly_white")
+        fig_a1_1.update_layout(template="plotly_white", xaxis_title="")
         st.plotly_chart(fig_a1_1, use_container_width=True)
     with c_a1_2:
         fig_a1_2 = px.bar(dist_port, x='Portafolio', y='Historias', title='Historias por Portafolio', text_auto=True, color_discrete_sequence=['#FFB300'])
-        fig_a1_2.update_layout(template="plotly_white")
+        fig_a1_2.update_layout(template="plotly_white", xaxis_title="")
         st.plotly_chart(fig_a1_2, use_container_width=True)
     with c_a1_3:
         fig_a1_3 = px.bar(dist_port, x='Portafolio', y='% Historias Num', title='% Historias por Portafolio', text_auto='.1f', color_discrete_sequence=['#4CAF50'])
-        fig_a1_3.update_layout(template="plotly_white")
+        fig_a1_3.update_layout(template="plotly_white", xaxis_title="")
+        fig_a1_3.update_traces(texttemplate='%{y:.1f}%')
         st.plotly_chart(fig_a1_3, use_container_width=True)
     st.markdown("---")
 
@@ -725,8 +721,9 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         st.plotly_chart(fig_roles, use_container_width=True)
     st.markdown("---")
 
-    # ---------------- ANÁLISIS 5: CAMBIOS ESTRATÉGICOS (NUEVO) ----------------
+    # ---------------- ANÁLISIS 5: CAMBIOS ESTRATÉGICOS (Puro) ----------------
     st.markdown("#### 5. Cambios Estratégicos Logrados (Solo Evidencia y Buen Camino)")
+    st.caption("Filtro Estricto: Sólo analiza conexiones cuyo estado es 'Ejemplo de Cambio' o 'Señal de Buen Camino'. Omite por completo Intenciones y Efectos Estancados.")
     df_evidencia = df_conn[df_conn['Estado'].isin(['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'])]
     
     if not df_evidencia.empty:
@@ -743,14 +740,14 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         fig_cam.update_layout(template="plotly_white", barmode='stack')
         st.plotly_chart(fig_cam, use_container_width=True)
         
-        with st.expander("📚 Ver Leyenda de Cambios (C1, C2...)"):
+        with st.expander("📚 Ver Leyenda de Cambios (C1 a C15)"):
             for k,v in dict_cambios.items(): st.markdown(f"**{v}:** {k}")
     else:
         st.info("No hay datos de evidencia (Negros/Rojos) para mostrar en este análisis.")
     st.markdown("---")
     
     # ---------------- ANÁLISIS 6: HEATMAP DE CAMBIOS ----------------
-    st.markdown("#### 6. Concentración de Cambios (Heatmap Máx. 15 Cambios)")
+    st.markdown("#### 6. Concentración de Cambios Totales (Heatmap Máx. 15 Cambios)")
     if not df_conn.empty:
         cam_port_nunique = df_conn.groupby('Portafolio')['Cambio Esperado'].nunique().reset_index(name='Diversidad de Cambios')
         st.write("**Diversidad (Cuántos cambios distintos atiende cada Portafolio)**")
@@ -771,21 +768,33 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     if not df_conn.empty:
         df_conn['No_Alineada_Hist'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
         
-        # Calcular alineación de historias
         hist_alin_df = df_conn.groupby(['Historia_Cod', 'Portafolio'])['No_Alineada_Hist'].any().reset_index()
         hist_alin_df['Estado_Alin'] = hist_alin_df['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
-        # Calcular alineación de iniciativas
         ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada_Hist'].any().reset_index()
         df_aliniacion = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
         
-        # Corrección del bug de porcentajes negativos (Cast explícito a booleano antes de invertir)
+        # Corrección del bug de negativos: forzar a Booleano antes de procesar
         df_aliniacion['No_Alineada_Hist'] = df_aliniacion['No_Alineada_Hist'].fillna(False).astype(bool)
         df_aliniacion['Estado_Alin'] = df_aliniacion['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
         res_ini = df_aliniacion.groupby(['Portafolio', 'Estado_Alin']).size().reset_index(name='Cantidad_Iniciativas')
         res_hist = hist_alin_df.groupby(['Portafolio', 'Estado_Alin']).size().reset_index(name='Cantidad_Historias')
         
+        st.write("**Tabla Resumen Consolidada (Iniciativas e Historias)**")
+        piv_ini = res_ini.pivot(index='Portafolio', columns='Estado_Alin', values='Cantidad_Iniciativas').fillna(0).astype(int)
+        piv_ini.columns = [f'Iniciativas {c}' for c in piv_ini.columns]
+        piv_hist = res_hist.pivot(index='Portafolio', columns='Estado_Alin', values='Cantidad_Historias').fillna(0).astype(int)
+        piv_hist.columns = [f'Historias {c}' for c in piv_hist.columns]
+        
+        res_tabla = piv_ini.merge(piv_hist, on='Portafolio', how='outer').fillna(0).astype(int).reset_index()
+        for expected_col in ['Iniciativas Alineada', 'Iniciativas Desalineada', 'Historias Alineada', 'Historias Desalineada']:
+            if expected_col not in res_tabla.columns: res_tabla[expected_col] = 0
+                
+        res_tabla = res_tabla[['Portafolio', 'Iniciativas Alineada', 'Iniciativas Desalineada', 'Historias Alineada', 'Historias Desalineada']]
+        res_tabla.columns = ['Portafolio', 'Iniciativas Alineadas', 'Iniciativas Desalineadas', 'Historias Alineadas', 'Historias Desalineadas']
+        st.dataframe(res_tabla, use_container_width=True, hide_index=True)
+
         c_al1, c_al2 = st.columns(2)
         with c_al1:
             fig_al1 = px.bar(res_ini, x='Portafolio', y='Cantidad_Iniciativas', color='Estado_Alin', barmode='group',
@@ -800,23 +809,150 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
                              title="Historias Alineadas vs Desalineadas")
             fig_al2.update_layout(template="plotly_white")
             st.plotly_chart(fig_al2, use_container_width=True)
-            
-        st.write("**Tabla Resumen Consolidada**")
-        # Pivot table for initiatives
-        piv_ini = res_ini.pivot(index='Portafolio', columns='Estado_Alin', values='Cantidad_Iniciativas').fillna(0).astype(int)
-        piv_ini.columns = [f'Iniciativas {c}' for c in piv_ini.columns]
-        # Pivot table for histories
-        piv_hist = res_hist.pivot(index='Portafolio', columns='Estado_Alin', values='Cantidad_Historias').fillna(0).astype(int)
-        piv_hist.columns = [f'Historias {c}' for c in piv_hist.columns]
+
+# ==========================================
+# PÁGINA 5: INDICADORES EJECUTIVOS (DIRECTIVOS)
+# ==========================================
+elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
+    st.markdown("### 📊 Indicadores Ejecutivos para Dirección")
+    st.caption("Módulo de analítica de alto nivel diseñado para toma de decisiones ágiles.")
+    
+    # 0. VALIDACIÓN ESTRUCTURAL (Para auditoría del directivo)
+    total_inis_universo = len(df_catalogo)
+    total_cambios = len(cambios_unicos)
+    
+    if total_inis_universo != 44 or total_cambios > 15:
+        st.error(f"⚠️ **ADVERTENCIA DE INTEGRIDAD:** El sistema detecta {total_inis_universo} Iniciativas (Esperadas: 44) y {total_cambios} Cambios (Máximo Esperado: 15). Revise la matriz de datos original.", icon="🚨")
+    else:
+        st.success(f"✅ **SISTEMA VALIDADO:** 44 Iniciativas cargadas | {total_cambios} Cambios detectados (Incluyendo 'No en estrategia').", icon="✅")
+    st.markdown("---")
+
+    df_conn = pd.DataFrame(datos_list)
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado'])
+
+    # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
+    st.markdown("#### A. Alineación Estratégica Ejecutiva")
+    df_conn['No_Alineada'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
+    
+    # Cálculos a nivel de historia
+    hist_alin_df = df_conn.groupby('Historia_Cod')['No_Alineada'].any().reset_index()
+    total_hists_alineadas = (~hist_alin_df['No_Alineada']).sum()
+    total_hists_desalineadas = hist_alin_df['No_Alineada'].sum()
+    historias_des_lista = hist_alin_df[hist_alin_df['No_Alineada']]['Historia_Cod'].tolist()
+    
+    # Cálculos a nivel de iniciativa cruzado con el catálogo de 44
+    ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada'].any().reset_index()
+    df_aliniacion_ejec = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
+    df_aliniacion_ejec['No_Alineada'] = df_aliniacion_ejec['No_Alineada'].fillna(False).astype(bool)
+    
+    total_inis_alineadas = (~df_aliniacion_ejec['No_Alineada']).sum()
+    total_inis_desalineadas = df_aliniacion_ejec['No_Alineada'].sum()
+    inis_des_lista = df_aliniacion_ejec[df_aliniacion_ejec['No_Alineada']]['Iniciativa'].tolist()
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Historias Alineadas", int(total_hists_alineadas))
+    kpi2.metric("Historias Desalineadas", int(total_hists_desalineadas))
+    kpi3.metric("Iniciativas Alineadas", int(total_inis_alineadas))
+    kpi4.metric("Iniciativas Desalineadas", int(total_inis_desalineadas))
+    
+    col_a1, col_a2 = st.columns(2)
+    with col_a1:
+        st.write("**Lista de Iniciativas Desalineadas:**")
+        if inis_des_lista: st.dataframe(pd.DataFrame({"Iniciativas": inis_des_lista}), use_container_width=True)
+        else: st.info("Ninguna iniciativa está desalineada.")
+    with col_a2:
+        st.write("**Lista de Historias Desalineadas:**")
+        if historias_des_lista: st.dataframe(pd.DataFrame({"Historias": historias_des_lista}), use_container_width=True)
+        else: st.info("Ninguna historia está desalineada.")
+    st.markdown("---")
+
+    # --- ANÁLISIS B: CONTRIBUCIÓN A LOS CAMBIOS ESTRATÉGICOS ---
+    st.markdown("#### B. Contribución a los Cambios Estratégicos")
+    if not df_conn.empty:
+        dist_cambios = df_conn.groupby('Cambio Esperado').size().reset_index(name='Conexiones')
+        fig_donut = px.pie(dist_cambios, names='Cambio Esperado', values='Conexiones', hole=0.4, 
+                           title="¿A cuáles cambios estamos aportando más? (Conexiones Totales)")
+        fig_donut.update_traces(textposition='inside', textinfo='percent+label')
+        fig_donut.update_layout(template="plotly_white", showlegend=False, height=500)
+        st.plotly_chart(fig_donut, use_container_width=True)
+    st.markdown("---")
+
+    # --- ANÁLISIS C: TOP 3 INICIATIVAS POR PORTAFOLIO (Evidencia) ---
+    st.markdown("#### C. Top 3 Iniciativas por Portafolio (Mayor Evidencia)")
+    st.caption("Basado exclusivamente en conexiones con estado: Negro (Ejemplo) + Rojo (Buen Camino).")
+    df_exito = df_conn[df_conn['Estado'].isin(['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'])]
+    
+    if not df_exito.empty:
+        top_inis_port = df_exito.groupby(['Portafolio', 'Iniciativa']).size().reset_index(name='Conexiones_Evidenciadas')
+        top_inis_port = top_inis_port.sort_values(['Portafolio', 'Conexiones_Evidenciadas'], ascending=[True, False])
+        top3_inis = top_inis_port.groupby('Portafolio').head(3).reset_index(drop=True)
         
-        # Merge pivots
-        res_tabla = piv_ini.merge(piv_hist, on='Portafolio', how='outer').fillna(0).astype(int).reset_index()
-        # Ensure all columns exist
-        for expected_col in ['Iniciativas Alineada', 'Iniciativas Desalineada', 'Historias Alineada', 'Historias Desalineada']:
-            if expected_col not in res_tabla.columns:
-                res_tabla[expected_col] = 0
-                
-        # Reorder and rename for UI
-        res_tabla = res_tabla[['Portafolio', 'Iniciativas Alineada', 'Iniciativas Desalineada', 'Historias Alineada', 'Historias Desalineada']]
-        res_tabla.columns = ['Portafolio', 'Iniciativas Alineadas', 'Iniciativas Desalineadas', 'Historias Alineadas', 'Historias Desalineadas']
-        st.dataframe(res_tabla, use_container_width=True, hide_index=True)
+        c_c1, c_c2 = st.columns([1, 2])
+        with c_c1:
+            st.dataframe(top3_inis, hide_index=True, use_container_width=True)
+        with c_c2:
+            fig_top_inis = px.bar(top3_inis, x='Conexiones_Evidenciadas', y='Iniciativa', color='Portafolio', 
+                                  orientation='h', text_auto=True, title="Iniciativas Líderes por Portafolio")
+            fig_top_inis.update_layout(template="plotly_white", yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_top_inis, use_container_width=True)
+    else: st.info("No hay evidencia suficiente (Negros o Rojos).")
+    st.markdown("---")
+
+    # Variables globales para mapeo de D, E, F, G
+    portafolios_unicos = [p for p in df_catalogo['Portafolio'].unique() if p.strip() != '']
+    cambios_unicos_list = list(set(d['Cambio Esperado'] for d in datos_list))
+    roles_unicos_list = list(set(d['Acción Estratégica'] for d in datos_list))
+
+    # --- ANÁLISIS D & E: CAMBIOS MÁS Y MENOS MOVILIZADOS ---
+    st.markdown("#### D & E. Movilización de Cambios por Portafolio")
+    st.caption("D: Cambios con más conexiones. | E: Oportunidades de mejora (Cambios con 0 o menor presencia).")
+    
+    idx_cambios = pd.MultiIndex.from_product([portafolios_unicos, cambios_unicos_list], names=['Portafolio', 'Cambio Esperado'])
+    df_base_cambios = pd.DataFrame(index=idx_cambios).reset_index()
+    conteos_cambios = df_conn.groupby(['Portafolio', 'Cambio Esperado']).size().reset_index(name='Frecuencia')
+    df_full_cambios = pd.merge(df_base_cambios, conteos_cambios, on=['Portafolio', 'Cambio Esperado'], how='left').fillna(0)
+    
+    # Calcular Porcentajes internos del portafolio
+    totales_cambios_port = df_full_cambios.groupby('Portafolio')['Frecuencia'].transform('sum')
+    df_full_cambios['Porcentaje'] = ((df_full_cambios['Frecuencia'] / totales_cambios_port) * 100).fillna(0).round(1).astype(str) + '%'
+    df_full_cambios['Cambio_Corto'] = df_full_cambios['Cambio Esperado'].map(dict_cambios)
+
+    top3_mas_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
+    top3_menos_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
+
+    c_de1, c_de2 = st.columns(2)
+    with c_de1:
+        st.write("**Top 3 MÁS Movilizados**")
+        st.dataframe(top3_mas_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
+    with c_de2:
+        st.write("**Top 3 MENOS Movilizados (Oportunidad de Mejora)**")
+        st.dataframe(top3_menos_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia']], hide_index=True, use_container_width=True)
+    with st.expander("📚 Leyenda de Cambios (C1 a C15)"):
+        for k,v in dict_cambios.items(): st.markdown(f"**{v}:** {k}")
+    st.markdown("---")
+
+    # --- ANÁLISIS F & G: ROLES MÁS Y MENOS EJERCIDOS ---
+    st.markdown("#### F & G. Capacidades Estratégicas (Roles) por Portafolio")
+    st.caption("F: Roles más utilizados. | G: Capacidades menos ejercidas en el sistema.")
+    
+    idx_roles = pd.MultiIndex.from_product([portafolios_unicos, roles_unicos_list], names=['Portafolio', 'Acción Estratégica'])
+    df_base_roles = pd.DataFrame(index=idx_roles).reset_index()
+    conteos_roles = df_conn.groupby(['Portafolio', 'Acción Estratégica']).size().reset_index(name='Frecuencia')
+    df_full_roles = pd.merge(df_base_roles, conteos_roles, on=['Portafolio', 'Acción Estratégica'], how='left').fillna(0)
+    
+    totales_roles_port = df_full_roles.groupby('Portafolio')['Frecuencia'].transform('sum')
+    df_full_roles['Porcentaje'] = ((df_full_roles['Frecuencia'] / totales_roles_port) * 100).fillna(0).round(1).astype(str) + '%'
+    df_full_roles['Accion_Corta'] = df_full_roles['Acción Estratégica'].map(dict_acciones)
+
+    top3_mas_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
+    top3_menos_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
+
+    c_fg1, c_fg2 = st.columns(2)
+    with c_fg1:
+        st.write("**Top 3 Roles MÁS Ejercidos**")
+        st.dataframe(top3_mas_roles[['Portafolio', 'Accion_Corta', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
+    with c_fg2:
+        st.write("**Top 3 Roles MENOS Ejercidos**")
+        st.dataframe(top3_menos_roles[['Portafolio', 'Accion_Corta', 'Frecuencia']], hide_index=True, use_container_width=True)
+    with st.expander("📚 Leyenda de Roles (A1 a A6)"):
+        for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
