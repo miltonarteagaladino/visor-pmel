@@ -37,7 +37,8 @@ with st.sidebar:
     pagina_actual = st.radio("Ir a:", [
         "🕸️ Mapa Sistémico (Redes)", 
         "📊 Analítica de Portafolio", 
-        "🧬 Patrones de Co-Ocurrencia"
+        "🧬 Patrones de Co-Ocurrencia",
+        "📈 Análisis MEL de Portafolio"
     ])
     st.markdown("---")
 
@@ -125,11 +126,49 @@ def formatear_caja(texto, ancho=35):
 def extraer_datos_puros(ruta_archivo):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
     datos = []
+    
+    # 1. LEER MATRIZ PORTAFOLIO (Asignación Oficial)
+    map_portafolio = {}
+    map_nombre = {}
+    if "Matriz Portafolio" in wb.sheetnames:
+        ws_port = wb["Matriz Portafolio"]
+        header_row, col_acro, col_port, col_nom = -1, -1, -1, -1
+        
+        for r in range(1, 10):
+            for c in range(1, ws_port.max_column + 1):
+                val = str(ws_port.cell(row=r, column=c).value).strip()
+                if val == "Nombre":
+                    col_acro = c
+                    header_row = r
+                elif val == "Oportunidad a la que más aporta":
+                    col_port = c
+                elif val == "Mecanismo de acción":
+                    col_nom = c
+            if col_acro != -1: break
+                
+        if col_acro != -1 and col_port != -1:
+            for r in range(header_row + 1, ws_port.max_row + 1):
+                acronimo = str(ws_port.cell(row=r, column=col_acro).value).strip()
+                porta = str(ws_port.cell(row=r, column=col_port).value).strip()
+                nom = str(ws_port.cell(row=r, column=col_nom).value).strip() if col_nom != -1 else acronimo
+                if acronimo and acronimo != 'None' and acronimo != 'nan':
+                    map_portafolio[acronimo] = porta
+                    map_nombre[acronimo] = nom
+
+    def get_portafolio_y_nombre(sheet_name):
+        if sheet_name in map_portafolio:
+            return map_portafolio[sheet_name], map_nombre.get(sheet_name, sheet_name)
+        if '-' in sheet_name:
+            sin_prefijo = sheet_name.split('-', 1)[1]
+            if sin_prefijo in map_portafolio:
+                return map_portafolio[sin_prefijo], map_nombre.get(sin_prefijo, sheet_name)
+        return "Sin Asignar", sheet_name
+
     pestañas = [sht for sht in wb.sheetnames if sht.startswith('I-') or sht.startswith('M-') or sht.startswith('B-') or sht.startswith('H-')]
     
     for sheet_name in pestañas:
         ws = wb[sheet_name]
-        iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
+        porta_asignado, iniciativa_asignada = get_portafolio_y_nombre(sheet_name)
         
         fila_cabeceras = -1
         for r in range(1, min(30, ws.max_row + 1)):
@@ -138,8 +177,7 @@ def extraer_datos_puros(ruta_archivo):
                 fila_cabeceras = r
                 break
                 
-        if fila_cabeceras == -1:
-            continue
+        if fila_cabeceras == -1: continue
             
         colores_cambios_font = {}
         for col in range(2, ws.max_column + 1):
@@ -161,26 +199,20 @@ def extraer_datos_puros(ruta_archivo):
             val_accion = ws.cell(row=row, column=1).value
             val_str = str(val_accion).strip() if val_accion else ""
             
-            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'):
-                break 
+            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'): break 
                 
             nueva_accion = detectar_accion_oficial(val_str)
-            if nueva_accion:
-                accion_actual = nueva_accion
-                
-            if not accion_actual:
-                continue 
+            if nueva_accion: accion_actual = nueva_accion
+            if not accion_actual: continue 
             
             for col in range(2, ws.max_column + 1):
                 val_cambio = ws.cell(row=fila_cabeceras, column=col).value
-                if not val_cambio or str(val_cambio).strip() == 'None': continue
+                if not val_cambio or str(val_cambio).strip() == 'None' or str(val_cambio).strip() == '': continue
                 
                 cambio_texto = str(val_cambio).replace('\n', ' ').strip()
                 if re.match(r'^[A-Z]-[A-Z]+-\d+', cambio_texto): continue
                 
-                cell_conexion = ws.cell(row=row, column=col)
-                val_conexion = cell_conexion.value
-                
+                val_conexion = ws.cell(row=row, column=col).value
                 if val_conexion and isinstance(val_conexion, str) and '-' in val_conexion:
                     codigos = [cd.strip() for cd in re.split(r'[\n,;\s]+', val_conexion) if cd.strip() and '-' in cd]
                     for codigo in codigos:
@@ -190,28 +222,30 @@ def extraer_datos_puros(ruta_archivo):
                         color_fuente = colores_cambios_font.get(cambio_texto, "#BDBDBD")
                         
                         datos.append({
-                            'Área': extraer_area_codigo(c_corto), 
-                            'Iniciativa': iniciativa, 
+                            'Portafolio': porta_asignado,
+                            'Iniciativa': iniciativa_asignada, 
                             'Acción Estratégica': accion_actual,
                             'Cambio Esperado': cambio_texto, 
                             'Historia_Cod': c_corto, 
                             'Historia_Corta': acortar_codigo(c_corto),
                             'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 
                             'Estado': estado_nom,
-                            'Color_Borde': color_fuente
+                            'Color_Borde': color_fuente,
+                            'Área': extraer_area_codigo(c_corto)
                         })
     return datos
 
 # LECTOR CENTRAL
 datos_list = extraer_datos_puros("Matriz.xlsx")
 
-# --- PANEL DE DIAGNÓSTICO ESTRUCTURAL ---
-st.sidebar.markdown("### Diagnóstico")
-st.sidebar.write("Registros:", len(datos_list))
-st.sidebar.write("Historias:", len(set(d["Historia_Cod"] for d in datos_list)))
-st.sidebar.write("Acciones:", len(set(d["Acción Estratégica"] for d in datos_list)))
-st.sidebar.write("Cambios:", len(set(d["Cambio Esperado"] for d in datos_list)))
-st.sidebar.write("Iniciativas:", len(set(d["Iniciativa"] for d in datos_list)))
+# --- DIAGNÓSTICO ESTRICTO EN BARRA LATERAL ---
+with st.sidebar:
+    st.markdown("### 🛠️ Diagnóstico Estructural")
+    st.write(f"**Registros:** {len(datos_list)}")
+    st.write(f"**Historias:** {len(set(d['Historia_Cod'] for d in datos_list))}")
+    st.write(f"**Acciones:** {len(set(d['Acción Estratégica'] for d in datos_list))}")
+    st.write(f"**Cambios:** {len(set(d['Cambio Esperado'] for d in datos_list))}")
+    st.write(f"**Iniciativas:** {len(set(d['Iniciativa'] for d in datos_list))}")
 
 acciones_unicas = sorted(list(set(d['Acción Estratégica'] for d in datos_list)))
 cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
@@ -260,7 +294,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 if max_peso == min_peso: return 16
                 return int(16 + ((peso - min_peso) / (max_peso - min_peso)) * 24)
 
-            # ESTRUCTURA CORREGIDA: cdn_resources='remote' evita creación de directorios 'lib'
+            # ESTRUCTURA CORREGIDA PARA STREAMLIT CLOUD: generate_html() IN-MEMORY
             net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124', cdn_resources='remote')
             net.set_options(f"""
             var options = {{ "nodes": {{ "margin": 12, "borderWidth": 4, "borderWidthSelected": 6 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
@@ -295,7 +329,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                     net.add_edge(d['Historia_Cod'], d['Acción Estratégica'], color='#E0E0E0')
                     net.add_edge(d['Acción Estratégica'], d['Cambio Esperado'], color=COLORES_HEX_PUROS.get(d['Estado'], '#000'), title=f"{d['Estado']}")
 
-            # ESTRUCTURA CORREGIDA: Generación in-memory (No se escribe en disco)
+            # SINCRONIZACIÓN WEB PURA (SIN DISCO)
             html_source = net.generate_html()
             components.html(html_source, height=720)
 
@@ -327,7 +361,6 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
     st.markdown("---")
     
     if pagina_actual == "📊 Analítica de Portafolio":
-        
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
@@ -553,3 +586,92 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
         with tab_c3:
             st.markdown("**Combinación Exitosa de Acciones + Cambios en la misma Iniciativa:**")
             algoritmo_mixto_veloz(datos_exitosos, 2, 20)
+
+# ==========================================
+# PÁGINA 4: ANÁLISIS MEL DE PORTAFOLIO
+# ==========================================
+elif pagina_actual == "📈 Análisis MEL de Portafolio":
+    st.markdown("### 📈 Análisis MEL de Portafolio")
+    st.caption("Clasificación estricta basada en asignaciones de la Matriz de Portafolio.")
+    
+    df_mel = pd.DataFrame(datos_list)
+    if df_mel.empty:
+        st.warning("No hay datos disponibles para el Análisis MEL.")
+    else:
+        df_mel['No_Alineada'] = df_mel['Cambio Esperado'] == 'Cambio - no en estrategia'
+        total_inis = df_mel['Iniciativa'].nunique()
+        total_hists = df_mel['Historia_Cod'].nunique()
+        
+        # 1. Alineación Estratégica
+        st.markdown("#### 1. Alineación Estratégica")
+        c_a1, c_a2 = st.columns(2)
+        
+        historias_alin = df_mel.groupby('Historia_Cod')['No_Alineada'].any()
+        perc_hist_no_alin = historias_alin.mean() * 100
+        perc_hist_alin = 100 - perc_hist_no_alin
+        
+        inis_alin = df_mel.groupby('Iniciativa')['No_Alineada'].any()
+        perc_ini_no_alin = inis_alin.mean() * 100
+        perc_ini_alin = 100 - perc_ini_no_alin
+        
+        with c_a1:
+            st.metric(label="✅ % Iniciativas Alineadas", value=f"{perc_ini_alin:.1f}%")
+            st.metric(label="⚠️ % Iniciativas NO Alineadas", value=f"{perc_ini_no_alin:.1f}%")
+        with c_a2:
+            st.metric(label="✅ % Historias Alineadas", value=f"{perc_hist_alin:.1f}%")
+            st.metric(label="⚠️ % Historias NO Alineadas", value=f"{perc_hist_no_alin:.1f}%")
+
+        st.markdown("---")
+        
+        # 2. Distribución del Portafolio
+        st.markdown("#### 2. Distribución por Portafolio")
+        port_stats = []
+        for port, group in df_mel.groupby('Portafolio'):
+            n_inis = group['Iniciativa'].nunique()
+            n_hists = group['Historia_Cod'].nunique()
+            n_conns = len(group)
+            port_stats.append({
+                'Portafolio': port,
+                'Iniciativas': n_inis,
+                '% Iniciativas': f"{(n_inis/total_inis)*100:.1f}%",
+                'Historias': n_hists,
+                '% Historias': f"{(n_hists/total_hists)*100:.1f}%",
+                'Conexiones': n_conns
+            })
+        st.dataframe(pd.DataFrame(port_stats), use_container_width=True)
+
+        st.markdown("---")
+        
+        # 3. Roles Estratégicos
+        st.markdown("#### 3. Roles Estratégicos (Acciones)")
+        st.caption("Distribución de pesos porcentuales de cada Acción Estratégica.")
+        
+        roles_port = pd.crosstab(df_mel['Portafolio'], df_mel['Acción Estratégica'], normalize='index') * 100
+        st.write("**Distribución Porcentual por Portafolio:**")
+        st.dataframe(roles_port.round(1).astype(str) + '%', use_container_width=True)
+        
+        roles_ini = pd.crosstab(df_mel['Iniciativa'], df_mel['Acción Estratégica'], normalize='index') * 100
+        st.write("**Distribución Porcentual por Iniciativa:**")
+        st.dataframe(roles_ini.round(1).astype(str) + '%', use_container_width=True)
+        
+        roles_hist = df_mel.groupby('Acción Estratégica')['Historia_Cod'].nunique()
+        roles_hist_pct = (roles_hist / total_hists) * 100
+        st.write("**Peso de los Roles a nivel de Historias (Una historia puede incluir varios roles):**")
+        st.dataframe(roles_hist_pct.round(1).astype(str) + '%', use_container_width=True)
+
+        st.markdown("---")
+        
+        # 4. Cambios Estratégicos
+        st.markdown("#### 4. Cambios Estratégicos (Diversidad)")
+        
+        cam_port = df_mel.groupby('Portafolio')['Cambio Esperado'].nunique().reset_index()
+        cam_port.columns = ['Portafolio', 'Cambios Distintos Movilizados']
+        
+        cam_ini = df_mel.groupby('Iniciativa')['Cambio Esperado'].nunique().reset_index()
+        cam_ini.columns = ['Iniciativa', 'Cambios Distintos Movilizados']
+        
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.dataframe(cam_port, use_container_width=True)
+        with col_c2:
+            st.dataframe(cam_ini, use_container_width=True)
