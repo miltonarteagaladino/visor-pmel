@@ -120,7 +120,7 @@ def formatear_caja(texto, ancho=35):
     if len(lineas) > 3: return "\n".join(lineas[:3]) + "..."
     return "\n".join(lineas)
 
-# EXTRACCIÓN ESTRUCTURAL REVISADA (SIN DEPENDENCIAS VISUALES EXCEL)
+# EXTRACCIÓN ESTRUCTURAL REVISADA
 @st.cache_data
 def extraer_datos_puros(ruta_archivo):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
@@ -131,7 +131,6 @@ def extraer_datos_puros(ruta_archivo):
         ws = wb[sheet_name]
         iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
         
-        # BÚSQUEDA DINÁMICA DE ENCABEZADOS
         fila_cabeceras = -1
         for r in range(1, min(30, ws.max_row + 1)):
             val = ws.cell(row=r, column=1).value
@@ -149,7 +148,6 @@ def extraer_datos_puros(ruta_archivo):
                 c_texto = str(val_cambio).replace('\n', ' ').strip()
                 colores_cambios_font[c_texto] = obtener_color_borde_categoria(col)
 
-        # LECTURA DE HISTORIAS (ENCIMA DE LA CABECERA)
         textos_hist = {}
         for row in range(1, fila_cabeceras):
             cod = ws.cell(row=row, column=1).value
@@ -158,7 +156,6 @@ def extraer_datos_puros(ruta_archivo):
                 c_limpio = extraer_corazon_codigo(cod)
                 textos_hist[c_limpio] = str(txt).strip() if txt else "Sin narrativa documentada."
 
-        # LECTURA DE ACCIONES Y CONEXIONES (DEBAJO DE LA CABECERA)
         accion_actual = None
         for row in range(fila_cabeceras + 1, ws.max_row + 1):
             val_accion = ws.cell(row=row, column=1).value
@@ -208,15 +205,13 @@ def extraer_datos_puros(ruta_archivo):
 # LECTOR CENTRAL
 datos_list = extraer_datos_puros("Matriz.xlsx")
 
-# --- DIAGNÓSTICO EN BARRA LATERAL ---
-with st.sidebar:
-    st.markdown("### 🛠️ Diagnóstico")
-    st.write("Registros:", len(datos_list))
-    st.write("Historias:", len(set(d["Historia_Cod"] for d in datos_list)))
-    st.write("Acciones:", len(set(d["Acción Estratégica"] for d in datos_list)))
-    st.write("Cambios:", len(set(d["Cambio Esperado"] for d in datos_list)))
-    st.write("Iniciativas:", len(set(d["Iniciativa"] for d in datos_list)))
-    st.markdown("---")
+# --- PANEL DE DIAGNÓSTICO ESTRUCTURAL ---
+st.sidebar.markdown("### Diagnóstico")
+st.sidebar.write("Registros:", len(datos_list))
+st.sidebar.write("Historias:", len(set(d["Historia_Cod"] for d in datos_list)))
+st.sidebar.write("Acciones:", len(set(d["Acción Estratégica"] for d in datos_list)))
+st.sidebar.write("Cambios:", len(set(d["Cambio Esperado"] for d in datos_list)))
+st.sidebar.write("Iniciativas:", len(set(d["Iniciativa"] for d in datos_list)))
 
 acciones_unicas = sorted(list(set(d['Acción Estratégica'] for d in datos_list)))
 cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
@@ -265,7 +260,8 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 if max_peso == min_peso: return 16
                 return int(16 + ((peso - min_peso) / (max_peso - min_peso)) * 24)
 
-            net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124')
+            # ESTRUCTURA CORREGIDA: cdn_resources='remote' evita creación de directorios 'lib'
+            net = Network(height='700px', width='100%', directed=True, bgcolor='#FFFFFF', font_color='#202124', cdn_resources='remote')
             net.set_options(f"""
             var options = {{ "nodes": {{ "margin": 12, "borderWidth": 4, "borderWidthSelected": 6 }}, "edges": {{ "smooth": {{ "type": "dynamic" }}, "width": 2.5 }}, "layout": {{ "hierarchical": {{ "enabled": true, "direction": "LR", "levelSeparation": {600 if vista_simplificada else 380}, "nodeSpacing": 120 }} }}, "physics": {{ "enabled": {"false" if congelar_mapa else "true"}, "solver": "hierarchicalRepulsion" }} }}
             """)
@@ -299,9 +295,9 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                     net.add_edge(d['Historia_Cod'], d['Acción Estratégica'], color='#E0E0E0')
                     net.add_edge(d['Acción Estratégica'], d['Cambio Esperado'], color=COLORES_HEX_PUROS.get(d['Estado'], '#000'), title=f"{d['Estado']}")
 
-            net.save_graph('grafo.html')
-            HtmlFile = open('grafo.html', 'r', encoding='utf-8')
-            components.html(HtmlFile.read(), height=720)
+            # ESTRUCTURA CORREGIDA: Generación in-memory (No se escribe en disco)
+            html_source = net.generate_html()
+            components.html(html_source, height=720)
 
     with col_lector:
         st.header("📖 Lector Analítico")
@@ -332,27 +328,6 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
     
     if pagina_actual == "📊 Analítica de Portafolio":
         
-        st.markdown("#### 📊 Métricas de Validación del Portafolio")
-        if datos_ana:
-            num_ini = len(set(d['Iniciativa'] for d in datos_ana))
-            num_hist = len(set(d['Historia_Cod'] for d in datos_ana))
-            num_acc = len(set(d['Acción Estratégica'] for d in datos_ana))
-            num_cam = len(set(d['Cambio Esperado'] for d in datos_ana))
-            
-            km1, km2, km3, km4 = st.columns(4)
-            km1.metric("Iniciativas Activas", num_ini)
-            km2.metric("Historias Trazadas", num_hist)
-            km3.metric("Nodos Únicos", f"{num_acc + num_cam}", f"{num_acc} Acciones | {num_cam} Cambios", delta_color="off")
-            km4.metric("Conexiones Totales", len(datos_ana))
-            
-            conteo_est = Counter([d['Estado'] for d in datos_ana])
-            ke1, ke2, ke3, ke4 = st.columns(4)
-            ke1.metric("⚫ Ejemplos de Cambio", conteo_est.get('Negro (Ejemplo de Cambio)', 0))
-            ke2.metric("🔴 Señales Buen Camino", conteo_est.get('Rojo (Señal de Buen Camino)', 0))
-            ke3.metric("🟠 Intenciones de Cambio", conteo_est.get('Naranja (Intención de Cambio)', 0))
-            ke4.metric("🟣 Efectos Estancados", conteo_est.get('Morado (Efecto Estancado)', 0))
-        st.markdown("---")
-
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
