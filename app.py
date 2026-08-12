@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from matplotlib.backends.backend_pdf import PdfPages
 
-# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH)
+# BLOQUEO ABSOLUTO DE PYARROW (ANTI-CRASH PARA MAC)
 os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
 os.environ["STREAMLIT_SERVER_MAX_MESSAGE_SIZE"] = "200"
 
@@ -45,7 +45,7 @@ with st.sidebar:
         "🖨️ Generador de Fichas (Frente 2)"
     ])
     st.markdown("---")
-    st.caption("Visor Sistémico PMEL v2.0\nEstrategia 2030")
+    st.caption("Visor Sistémico PMEL v3.0\nArquitectura por Sufijos")
 
 titulo_limpio = pagina_actual.split(" ", 1)[1] if " " in pagina_actual else pagina_actual
 st.markdown(f"""
@@ -80,29 +80,6 @@ def detectar_accion_oficial(texto):
     if "capacidad" in t or "lider" in t: return "6. Fortalecemos capacidades (liderazgo)"
     return None
 
-def obtener_estado_color(cell, codigo_historia):
-    cod_upper = str(codigo_historia).upper()
-    if "CMB-09" in cod_upper or "CMB-10" in cod_upper or "LT-03" in cod_upper or "CV-08" in cod_upper or "LT-01" in cod_upper or "LT-02" in cod_upper:
-        return 'Morado (Estancado)'
-    try:
-        if cell.font and cell.font.color:
-            if cell.font.color.type == 'theme' and cell.font.color.theme == 5: return 'Naranja (Intención)'
-            if cell.font.color.type == 'rgb':
-                hex_color = str(cell.font.color.rgb).upper()[-6:]
-                if hex_color in ['000000', '333333']: return 'Negro (Cambio)'
-                if hex_color in ['C00000', 'FF0000', '990000']: return 'Rojo (Incipiente)'
-                if hex_color in ['351C75', '7030A0', '800080']: return 'Morado (Estancado)'
-                if hex_color in ['E97132', 'FFC000', 'E26B0A']: return 'Naranja (Intención)'
-                try:
-                    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-                    if r < 80 and g < 80 and b < 80: return 'Negro (Cambio)'
-                    if r > 150 and g < 100 and b < 100: return 'Rojo (Incipiente)'
-                    if r > 90 and b > 90 and g < (r - 20) and g < (b - 20): return 'Morado (Estancado)'
-                    if r > 150 and g > 80 and b < 120: return 'Naranja (Intención)'
-                except: pass
-    except: pass
-    return 'Negro (Cambio)'
-
 def obtener_color_borde_categoria(col_index):
     if col_index == 4: return "#9C27B0" 
     elif 5 <= col_index <= 10: return "#C0CA33" 
@@ -117,16 +94,32 @@ def limpiar_codigo_historia(codigo):
     if "02EM-FC" in c_limpio: c_limpio = c_limpio.replace("02EM-FC", "02-EM-FC")
     return c_limpio
 
-def acortar_codigo(codigo):
-    partes = codigo.split('-')
-    if len(partes) >= 3: return f"{partes[1]}{partes[2]}"
-    return codigo
+# TAXONOMÍA METODOLÓGICA OFICIAL DE LA FUNDACIÓN
+def obtener_estado_por_sufijo(codigo):
+    cod_upper = str(codigo).upper().strip()
+    if cod_upper.endswith("-EC"): return 'Negro (Ejemplo de Cambio)'
+    if cod_upper.endswith("-BC"): return 'Rojo (Señal de Buen Camino)'
+    if cod_upper.endswith("-IC"): return 'Naranja (Intención de Cambio)'
+    if cod_upper.endswith("-EE"): return 'Morado (Efecto Estancado)'
+    return 'Negro (Ejemplo de Cambio)' 
 
 def extraer_corazon_codigo(codigo):
     c_limpio = limpiar_codigo_historia(codigo)
     match = re.search(r'([A-Z]+-\d+)', c_limpio)
-    if match: return match.group(1)
+    base = match.group(1) if match else c_limpio
+    
+    match_full = re.search(r'([A-Z]+-\w+-\d+-[A-Z]+-[A-Z]+)', c_limpio)
+    if match_full: return match_full.group(1)
+    
+    if c_limpio.endswith("-EC") or c_limpio.endswith("-IC") or c_limpio.endswith("-EE") or c_limpio.endswith("-BC"):
+        return c_limpio[:-3]
     return c_limpio
+
+def acortar_codigo(codigo):
+    corazon = extraer_corazon_codigo(codigo)
+    partes = corazon.split('-')
+    if len(partes) >= 3: return f"{partes[1]}{partes[2]}"
+    return corazon
 
 def formatear_caja(texto, ancho=35):
     lineas = textwrap.wrap(texto, width=ancho)
@@ -142,45 +135,37 @@ def extraer_datos_puros(ruta_archivo):
     for sheet_name in pestañas:
         ws = wb[sheet_name]
         iniciativa = str(ws.cell(row=1, column=2).value or sheet_name).strip()
+        fila_cabeceras = 12
         
         colores_cambios_font = {}
         for col in range(4, ws.max_column + 1):
-            val_cambio = ws.cell(row=2, column=col).value
+            val_cambio = ws.cell(row=fila_cabeceras, column=col).value
             if val_cambio and str(val_cambio).strip() != 'None':
                 c_texto = str(val_cambio).replace('\n', ' ').strip()
-                cell_head = ws.cell(row=2, column=col)
-                font_hex = "#BDBDBD" 
-                try:
-                    if cell_head.font and cell_head.font.color:
-                        if cell_head.font.color.type == 'rgb':
-                            c_rgb = str(cell_head.font.color.rgb)
-                            if c_rgb and c_rgb != '00000000': font_hex = "#" + c_rgb[-6:]
-                        elif cell_head.font.color.type == 'theme':
-                            font_hex = obtener_color_borde_categoria(col)
-                except: font_hex = obtener_color_borde_categoria(col)
-                if font_hex in ["#FFFFFF", "#000000", "#BDBDBD", "000000"]: font_hex = obtener_color_borde_categoria(col)
-                colores_cambios_font[c_texto] = font_hex
+                colores_cambios_font[c_texto] = obtener_color_borde_categoria(col)
 
         textos_hist = {}
-        for row in range(10, ws.max_row + 1):
-            cod = ws.cell(row=row, column=2).value
-            txt = ws.cell(row=row, column=3).value
+        for row in range(3, fila_cabeceras - 1):
+            cod = ws.cell(row=row, column=1).value
+            txt = ws.cell(row=row, column=2).value
             if cod and isinstance(cod, str) and '-' in cod:
                 c_limpio = extraer_corazon_codigo(cod)
                 textos_hist[c_limpio] = str(txt).strip() if txt else "Sin narrativa documentada."
 
         accion_actual = None
-        for row in range(3, ws.max_row + 1):
-            val_accion = ws.cell(row=row, column=2).value
+        for row in range(fila_cabeceras + 1, ws.max_row + 1):
+            val_accion = ws.cell(row=row, column=1).value
             val_str = str(val_accion).strip() if val_accion else ""
             
-            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'): break 
             nueva_accion = detectar_accion_oficial(val_str)
-            if nueva_accion: accion_actual = nueva_accion
-            if not accion_actual: continue 
+            if nueva_accion:
+                accion_actual = nueva_accion
+                
+            if not accion_actual:
+                continue 
             
             for col in range(4, ws.max_column + 1):
-                val_cambio = ws.cell(row=2, column=col).value
+                val_cambio = ws.cell(row=fila_cabeceras, column=col).value
                 if not val_cambio or str(val_cambio).strip() == 'None': continue
                 
                 cambio_texto = str(val_cambio).replace('\n', ' ').strip()
@@ -194,7 +179,7 @@ def extraer_datos_puros(ruta_archivo):
                     for codigo in codigos:
                         cod_limpio = limpiar_codigo_historia(codigo)
                         c_corto = extraer_corazon_codigo(cod_limpio)
-                        estado_nom = obtener_estado_color(cell_conexion, cod_limpio)
+                        estado_nom = obtener_estado_por_sufijo(cod_limpio)
                         color_fuente = colores_cambios_font.get(cambio_texto, "#BDBDBD")
                         
                         datos.append({
@@ -205,6 +190,7 @@ def extraer_datos_puros(ruta_archivo):
                         })
     return datos
 
+# LECTOR CENTRAL
 datos_list = extraer_datos_puros("Matriz.xlsx")
 
 acciones_unicas = sorted(list(set(d['Acción Estratégica'] for d in datos_list)))
@@ -212,8 +198,9 @@ cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-COLORES_ESTADO = {'Negro (Cambio)': '#212121', 'Naranja (Intención)': '#FF9800', 'Rojo (Incipiente)': '#D32F2F', 'Morado (Estancado)': '#351C75'}
-COLORES_HEX_PUROS = {'Negro (Cambio)': '#212121', 'Naranja (Intención)': '#FF9800', 'Rojo (Incipiente)': '#D32F2F', 'Morado (Estancado)': '#7B1FA2'}
+# DICCIONARIOS ACTUALIZADOS CON LA TAXONOMÍA METODOLÓGICA
+COLORES_ESTADO = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#351C75'}
+COLORES_HEX_PUROS = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#7B1FA2'}
 
 # ==========================================
 # PÁGINA 1: MAPA SISTÉMICO 
@@ -336,10 +323,10 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
             
             conteo_est = Counter([d['Estado'] for d in datos_ana])
             ke1, ke2, ke3, ke4 = st.columns(4)
-            ke1.metric("⚫ Negros (Cambios)", conteo_est.get('Negro (Cambio)', 0))
-            ke2.metric("🔴 Rojos (Incipientes)", conteo_est.get('Rojo (Incipiente)', 0))
-            ke3.metric("🟠 Naranjas (Intenciones)", conteo_est.get('Naranja (Intención)', 0))
-            ke4.metric("🟣 Morados (Estancados)", conteo_est.get('Morado (Estancado)', 0))
+            ke1.metric("⚫ Ejemplos de Cambio", conteo_est.get('Negro (Ejemplo de Cambio)', 0))
+            ke2.metric("🔴 Señales Buen Camino", conteo_est.get('Rojo (Señal de Buen Camino)', 0))
+            ke3.metric("🟠 Intenciones de Cambio", conteo_est.get('Naranja (Intención de Cambio)', 0))
+            ke4.metric("🟣 Efectos Estancados", conteo_est.get('Morado (Efecto Estancado)', 0))
         st.markdown("---")
 
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
@@ -365,8 +352,8 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
             if fig2: st.plotly_chart(fig2, use_container_width=True)
             else: st.info("Sin datos.")
 
-        st.markdown("#### Logros en Terreno (Solo Verificados e Incipientes)")
-        datos_logros = [d for d in datos_ana if d['Estado'] in ['Negro (Cambio)', 'Rojo (Incipiente)']]
+        st.markdown("#### Logros en Terreno (Ejemplos + Señales de Buen Camino)")
+        datos_logros = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
         c_log1, c_log2 = st.columns(2)
         with c_log1:
             fig3 = crear_grafico_ranking(datos_logros, 'Acción Estratégica', 'Greens', 'Historias (Negras/Rojas)')
@@ -376,7 +363,7 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
             if fig4: st.plotly_chart(fig4, use_container_width=True)
 
         st.markdown("#### Intenciones a Futuro (Solo Naranjas)")
-        datos_intenciones = [d for d in datos_ana if d['Estado'] == 'Naranja (Intención)']
+        datos_intenciones = [d for d in datos_ana if d['Estado'] == 'Naranja (Intención de Cambio)']
         c_int1, c_int2 = st.columns(2)
         with c_int1:
             fig5 = crear_grafico_ranking(datos_intenciones, 'Acción Estratégica', 'Oranges', 'Historias (Naranjas)')
@@ -406,21 +393,23 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
         st.markdown("---")
         st.markdown("### 🗺️ Densidad de Impacto: Acción vs Cambio")
         if datos_ana:
-            conteo_cruces = Counter([(d['Acción Estratégica'], d['Cambio Esperado']) for d in datos_ana])
-            z_data, hover_data = [], []
-            y_labels = [dict_acciones[a] for a in acciones_unicas]
-            x_labels = [dict_cambios[c] for c in cambios_unicos]
+            df_heat_temp = pd.DataFrame(datos_ana)
+            df_heat_temp['Accion_Corta'] = df_heat_temp['Acción Estratégica'].map(dict_acciones)
+            df_heat_temp['Cambio_Corto'] = df_heat_temp['Cambio Esperado'].map(dict_cambios)
             
-            for acc in acciones_unicas:
-                row_z, row_hover = [], []
-                for cam in cambios_unicos:
-                    val = conteo_cruces.get((acc, cam), 0)
-                    row_z.append(val)
-                    row_hover.append(f"<b>Acción:</b> {acc}<br><b>Cambio:</b> {cam}<br><b>Conexiones:</b> {val}")
-                z_data.append(row_z)
-                hover_data.append(row_hover)
+            heat_df = pd.crosstab(df_heat_temp['Accion_Corta'], df_heat_temp['Cambio_Corto'])
+            hover_text = []
+            for accion_corta in heat_df.index:
+                hover_row = []
+                for cambio_corto in heat_df.columns:
+                    acc_real = [k for k, v in dict_acciones.items() if v == accion_corta][0]
+                    cam_real = [k for k, v in dict_cambios.items() if v == cambio_corto][0]
+                    cant = heat_df.loc[accion_corta, cambio_corto]
+                    hover_row.append(f"<b>Acción:</b> {acc_real}<br><b>Cambio:</b> {cam_real}<br><b>Conexiones:</b> {cant}")
+                hover_text.append(hover_row)
 
-            fig_heat = go.Figure(data=go.Heatmap(z=z_data, x=x_labels, y=y_labels, colorscale='YlGnBu', text=z_data, texttemplate="%{text}", customdata=hover_data, hovertemplate="%{customdata}<extra></extra>"))
+            fig_heat = px.imshow(heat_df, color_continuous_scale='YlGnBu', text_auto=True, aspect="auto")
+            fig_heat.update_traces(customdata=hover_text, hovertemplate="%{customdata}<extra></extra>")
             fig_heat.update_layout(margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Cambios Esperados (C1, C2...)", yaxis_title="Acciones Estratégicas (A1, A2...)")
             st.plotly_chart(fig_heat, use_container_width=True)
             
@@ -436,9 +425,9 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
     # ==========================================
     elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
 
-        st.info("💡 **Fórmulas de Éxito:** El algoritmo filtra automáticamente los Ecosistemas, basándose EXCLUSIVAMENTE en las conexiones que tienen evidencia real o incipiente (Negras y Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
+        st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
         
-        datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Cambio)', 'Rojo (Incipiente)']]
+        datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
 
         def algoritmo_seguro(lista_dicts, key_agrupadora, key_objetivo, nombre_grupo, min_r, max_r):
             grupos = defaultdict(set)
@@ -572,7 +561,7 @@ elif pagina_actual in ["📊 Analítica de Portafolio", "🧬 Patrones de Co-Ocu
 elif pagina_actual == "🖨️ Generador de Fichas (Frente 2)":
     
     st.markdown("### 🖨️ Fábrica Automática de Fichas de Impresión")
-    st.info("Generador de resúmenes visuales para el Taller. Formato optimizado para **impresión en Tamaño Carta (2 iniciativas por página)**. El sistema congela la visualización de manera estática y omite los estados que no tienen conexiones.", icon="📄")
+    st.info("Generador de resúmenes visuales para el Taller. Formato optimizado para **impresión en Tamaño Carta (2 iniciativas por página)**.", icon="📄")
     
     if st.button("🚀 Generar y Descargar Documento PDF (Toma aprox 10 segundos)", use_container_width=True):
         with st.spinner("Ensamblando páginas y trazando redes en PDF..."):
@@ -580,10 +569,10 @@ elif pagina_actual == "🖨️ Generador de Fichas (Frente 2)":
             borde_cambios_map = {d['Cambio Esperado']: d['Color_Borde'] for d in datos_list}
             iniciativas = sorted(list(set(d['Iniciativa'] for d in datos_list)))
             estados_orden = [
-                ('Negro (Cambio)', '#212121', 'Evidencia Verificada'),
-                ('Rojo (Incipiente)', '#D32F2F', 'Avances Incipientes'),
-                ('Naranja (Intención)', '#FF9800', 'Intenciones a Futuro'),
-                ('Morado (Estancado)', '#7B1FA2', 'Estancado o Bloqueado')
+                ('Negro (Ejemplo de Cambio)', '#212121', 'Ejemplo de Cambio (Evidencia)'),
+                ('Rojo (Señal de Buen Camino)', '#D32F2F', 'Señal de Buen Camino (Progreso)'),
+                ('Naranja (Intención de Cambio)', '#FF9800', 'Intención de Cambio'),
+                ('Morado (Efecto Estancado)', '#7B1FA2', 'Efecto Estancado (Fallido)')
             ]
 
             pdf_buffer = io.BytesIO()
@@ -597,7 +586,7 @@ elif pagina_actual == "🖨️ Generador de Fichas (Frente 2)":
                         if not d_filtrados: continue
 
                         ax = axs[plots_on_page]
-                        ax.set_title(f"Iniciativa: {ini}  |  Estado: {est_label}", fontsize=12, fontweight='bold', color='#003366', pad=10)
+                        ax.set_title(f"Iniciativa: {ini}\nEstado: {est_label}", fontsize=12, fontweight='bold', color='#003366', pad=10)
 
                         acciones = list(set(d['Acción Estratégica'] for d in d_filtrados))
                         cambios = list(set(d['Cambio Esperado'] for d in d_filtrados))
