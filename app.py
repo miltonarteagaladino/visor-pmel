@@ -193,19 +193,26 @@ def extraer_universo_y_conexiones(ruta_archivo):
                 c_texto = re.sub(r'\s+', ' ', str(val_cambio).replace('\n', ' ').strip())
                 colores_cambios_font[c_texto] = obtener_color_borde_categoria(col)
 
+        # BLINDAJE DE NARRATIVAS (Escaneo de toda la hoja para ubicarlas donde sea que estén)
         textos_hist = {}
-        for row in range(1, fila_cabeceras):
-            cod = ws.cell(row=row, column=1).value
-            txt = ws.cell(row=row, column=2).value
+        for r_hist in range(1, ws.max_row + 1):
+            cod = ws.cell(row=r_hist, column=1).value
             if cod and isinstance(cod, str) and '-' in cod:
-                c_limpio = extraer_corazon_codigo(cod)
-                textos_hist[c_limpio] = str(txt).strip() if txt else "Sin narrativa documentada."
+                c_str = str(cod).strip().upper()
+                if c_str.startswith(('I-', 'M-', 'B-', 'H-')):
+                    txt = ws.cell(row=r_hist, column=2).value
+                    # Respaldo: si la columna B está vacía, busca en la C
+                    if not txt or str(txt).strip() in ['None', '']:
+                        txt = ws.cell(row=r_hist, column=3).value
+                    
+                    c_limpio = extraer_corazon_codigo(cod)
+                    textos_hist[c_limpio] = str(txt).strip() if txt and str(txt).strip() not in ['None', ''] else "Sin narrativa documentada."
 
         accion_actual = None
         for row in range(fila_cabeceras + 1, ws.max_row + 1):
             val_accion = ws.cell(row=row, column=1).value
             val_str = str(val_accion).strip() if val_accion else ""
-            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto'): break 
+            if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto') or val_str.lower().startswith('récord') or val_str.lower().startswith('record'): break 
                 
             nueva_accion = detectar_accion_oficial(val_str)
             if nueva_accion: accion_actual = nueva_accion
@@ -237,7 +244,7 @@ def extraer_universo_y_conexiones(ruta_archivo):
                             'Estado': estado_nom,
                             'Color_Borde': color_fuente,
                             'Área': extraer_area_codigo(c_corto),
-                            'Conexion_Cod': cod_limpio # <--- Clave para exportar matriz cruce
+                            'Conexion_Cod': cod_limpio 
                         })
                         
     return catalogo_iniciativas, datos
@@ -782,6 +789,8 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         
         ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada_Hist'].any().reset_index()
         df_aliniacion = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
+        
+        # Corrección del bug de negativos: forzar a Booleano antes de procesar
         df_aliniacion['No_Alineada_Hist'] = df_aliniacion['No_Alineada_Hist'].fillna(False).astype(bool)
         df_aliniacion['Estado_Alin'] = df_aliniacion['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
@@ -824,7 +833,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("### 📊 Indicadores Ejecutivos para Dirección")
     st.caption("Módulo de analítica de alto nivel diseñado para toma de decisiones ágiles.")
     
-    # 0. VALIDACIÓN ESTRUCTURAL
+    # 0. VALIDACIÓN ESTRUCTURAL (Para auditoría del directivo)
     total_inis_universo = len(df_catalogo)
     total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
     
@@ -862,11 +871,11 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        st.write("**Iniciativas Desalineadas**")
+        st.write("**Lista de Iniciativas Desalineadas:**")
         if inis_des_lista: st.dataframe(pd.DataFrame({"Iniciativas": inis_des_lista}), use_container_width=True)
         else: st.info("Ninguna iniciativa está desalineada.")
     with col_a2:
-        st.write("**Historias Desalineadas**")
+        st.write("**Lista de Historias Desalineadas:**")
         if historias_des_lista: st.dataframe(pd.DataFrame({"Historias": historias_des_lista}), use_container_width=True)
         else: st.info("Ninguna historia está desalineada.")
     st.markdown("---")
@@ -876,7 +885,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     if not df_conn.empty:
         dist_cambios = df_conn.groupby('Cambio Esperado').size().reset_index(name='Conexiones')
         fig_donut = px.pie(dist_cambios, names='Cambio Esperado', values='Conexiones', hole=0.4, 
-                           title="Distribución de Aportes a Cambios Esperados")
+                           title="¿A cuáles cambios estamos aportando más? (Conexiones Totales)")
         fig_donut.update_traces(textposition='inside', textinfo='percent+label')
         fig_donut.update_layout(template="plotly_white", showlegend=False, height=500)
         st.plotly_chart(fig_donut, use_container_width=True)
