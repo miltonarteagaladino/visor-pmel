@@ -980,50 +980,110 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
     st.markdown("---")
 
-    # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
-    st.markdown("#### H. Complejidad y Alcance de las Historias")
-    st.caption("Analiza qué tan robustas son las narrativas: si requieren múltiples acciones para ejecutarse (Multiacción) o si logran impactar múltiples resultados (Multicambio).")
+    # --- ANÁLISIS H: COMPLEJIDAD DE LA INTERVENCIÓN ---
+    st.markdown("#### H. Complejidad de la Intervención (Multiacción y Multicambio)")
+    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples resultados simultáneamente.")
     
     if not df_conn.empty:
-        # 1. Multiacción
-        hist_acc = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
-        h_multi_acc = hist_acc[hist_acc['Acción Estratégica'] > 1]
+        tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
         
-        # 2. Multicambio
-        hist_cam = df_conn.groupby('Historia_Cod')['Cambio Esperado'].nunique().reset_index()
-        h_multi_cam = hist_cam[hist_cam['Cambio Esperado'] > 1]
-        
-        total_hists_conectadas = df_conn['Historia_Cod'].nunique()
-        
-        c_h1, c_h2 = st.columns(2)
-        with c_h1:
-            st.write("**1. Historias Multiacción**")
-            st.info("Historias ubicadas en **2 o más Acciones Estratégicas** (Diferentes Filas).")
-            pct_acc = (len(h_multi_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
-            st.metric("Historias Multiacción", f"{len(h_multi_acc)} de {total_hists_conectadas}", f"{pct_acc:.1f}% del total trazado", delta_color="off")
+        with tab_h1:
+            # 1. Multiacción (Historias)
+            hist_acc = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
+            h_multi_acc = hist_acc[hist_acc['Acción Estratégica'] > 1]
+            h_uni_acc = hist_acc[hist_acc['Acción Estratégica'] == 1]
             
-            if not h_multi_acc.empty:
-                df_multi_acc_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_acc['Historia_Cod'])]
-                lista_acc = df_multi_acc_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
-                    Cantidad_Acciones=('Acción Estratégica', 'nunique'),
-                    Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
-                ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
-                st.dataframe(lista_acc, hide_index=True, use_container_width=True)
+            # 2. Multicambio (Historias)
+            hist_cam = df_conn.groupby('Historia_Cod')['Cambio Esperado'].nunique().reset_index()
+            h_multi_cam = hist_cam[hist_cam['Cambio Esperado'] > 1]
+            h_uni_cam = hist_cam[hist_cam['Cambio Esperado'] == 1]
+            
+            total_hists_conectadas = df_conn['Historia_Cod'].nunique()
+            
+            c_h1, c_h2 = st.columns(2)
+            with c_h1:
+                st.write("**1. Historias Multiacción**")
+                st.info("Historias ubicadas en **2 o más Acciones Estratégicas** (Diferentes Filas).")
+                pct_multi_a = (len(h_multi_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                pct_uni_a = (len(h_uni_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
                 
-        with c_h2:
-            st.write("**2. Historias Multicambio**")
-            st.info("Historias que aportan a **2 o más Cambios Esperados** (Diferentes Columnas).")
-            pct_cam = (len(h_multi_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
-            st.metric("Historias Multicambio", f"{len(h_multi_cam)} de {total_hists_conectadas}", f"{pct_cam:.1f}% del total trazado", delta_color="off")
+                st.metric("Historias Multiacción (>1)", f"{len(h_multi_acc)}", f"{pct_multi_a:.1f}% del total trazado", delta_color="off")
+                st.caption(f"*(Para validar: El resto son {len(h_uni_acc)} historias con 1 sola acción, que representan el {pct_uni_a:.1f}%)*")
+                
+                if not h_multi_acc.empty:
+                    df_multi_acc_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_acc['Historia_Cod'])]
+                    lista_acc = df_multi_acc_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                        Cantidad_Acciones=('Acción Estratégica', 'nunique'),
+                        Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+                    st.dataframe(lista_acc, hide_index=True, use_container_width=True)
+                    
+            with c_h2:
+                st.write("**2. Historias Multicambio**")
+                st.info("Historias que aportan a **2 o más Cambios Esperados** (Diferentes Columnas).")
+                pct_multi_c = (len(h_multi_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                pct_uni_c = (len(h_uni_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                
+                st.metric("Historias Multicambio (>1)", f"{len(h_multi_cam)}", f"{pct_multi_c:.1f}% del total trazado", delta_color="off")
+                st.caption(f"*(Para validar: El resto son {len(h_uni_cam)} historias con 1 solo cambio, que representan el {pct_uni_c:.1f}%)*")
+                
+                if not h_multi_cam.empty:
+                    df_multi_cam_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_cam['Historia_Cod'])].copy()
+                    df_multi_cam_det['Cambio_Corto'] = df_multi_cam_det['Cambio Esperado'].map(dict_cambios)
+                    lista_cam = df_multi_cam_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                        Cantidad_Cambios=('Cambio Esperado', 'nunique'),
+                        Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
+                    st.dataframe(lista_cam, hide_index=True, use_container_width=True)
+
+        with tab_h2:
+            # 1. Multiacción (Iniciativas)
+            ini_acc = df_conn.groupby('Iniciativa')['Acción Estratégica'].nunique().reset_index()
+            i_multi_acc = ini_acc[ini_acc['Acción Estratégica'] > 1]
+            i_uni_acc = ini_acc[ini_acc['Acción Estratégica'] == 1]
             
-            if not h_multi_cam.empty:
-                df_multi_cam_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_cam['Historia_Cod'])].copy()
-                df_multi_cam_det['Cambio_Corto'] = df_multi_cam_det['Cambio Esperado'].map(dict_cambios)
-                lista_cam = df_multi_cam_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
-                    Cantidad_Cambios=('Cambio Esperado', 'nunique'),
-                    Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
-                ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
-                st.dataframe(lista_cam, hide_index=True, use_container_width=True)
+            # 2. Multicambio (Iniciativas)
+            ini_cam = df_conn.groupby('Iniciativa')['Cambio Esperado'].nunique().reset_index()
+            i_multi_cam = ini_cam[ini_cam['Cambio Esperado'] > 1]
+            i_uni_cam = ini_cam[ini_cam['Cambio Esperado'] == 1]
+            
+            total_inis_conectadas = df_conn['Iniciativa'].nunique()
+            
+            c_i1, c_i2 = st.columns(2)
+            with c_i1:
+                st.write("**1. Iniciativas Multiacción**")
+                st.info("Iniciativas que emplean **2 o más Acciones Estratégicas** en su portafolio.")
+                p_multi_ia = (len(i_multi_acc) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                p_uni_ia = (len(i_uni_acc) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                
+                st.metric("Iniciativas Multiacción (>1)", f"{len(i_multi_acc)}", f"{p_multi_ia:.1f}% de inis activas", delta_color="off")
+                st.caption(f"*(El resto son {len(i_uni_acc)} iniciativas con 1 sola acción: {p_uni_ia:.1f}%)*")
+                
+                if not i_multi_acc.empty:
+                    df_im_det = df_conn[df_conn['Iniciativa'].isin(i_multi_acc['Iniciativa'])]
+                    lista_i_acc = df_im_det.groupby(['Portafolio', 'Iniciativa']).agg(
+                        Cantidad_Acciones=('Acción Estratégica', 'nunique'),
+                        Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+                    st.dataframe(lista_i_acc, hide_index=True, use_container_width=True)
+
+            with c_i2:
+                st.write("**2. Iniciativas Multicambio**")
+                st.info("Iniciativas que logran impactar **2 o más Cambios Esperados**.")
+                p_multi_ic = (len(i_multi_cam) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                p_uni_ic = (len(i_uni_cam) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                
+                st.metric("Iniciativas Multicambio (>1)", f"{len(i_multi_cam)}", f"{p_multi_ic:.1f}% de inis activas", delta_color="off")
+                st.caption(f"*(El resto son {len(i_uni_cam)} iniciativas con 1 solo cambio: {p_uni_ic:.1f}%)*")
+                
+                if not i_multi_cam.empty:
+                    df_im_cam_det = df_conn[df_conn['Iniciativa'].isin(i_multi_cam['Iniciativa'])].copy()
+                    df_im_cam_det['Cambio_Corto'] = df_im_cam_det['Cambio Esperado'].map(dict_cambios)
+                    lista_i_cam = df_im_cam_det.groupby(['Portafolio', 'Iniciativa']).agg(
+                        Cantidad_Cambios=('Cambio Esperado', 'nunique'),
+                        Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
+                    st.dataframe(lista_i_cam, hide_index=True, use_container_width=True)
     else:
         st.info("No hay datos suficientes para calcular la complejidad.")
 
