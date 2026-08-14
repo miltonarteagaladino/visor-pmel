@@ -318,6 +318,7 @@ if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecuti
 # PÁGINA 1: MAPA SISTÉMICO 
 # ==========================================
 if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
+    
     col_f3, col_f4 = st.columns(2)
     with col_f3:
         est_sel = st.selectbox("🎨 3. Estado:", ["Todos los estados"] + sorted(list(set(d['Estado'] for d in datos_ana))))
@@ -399,6 +400,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
 # PÁGINA 2 Y 3: LÓGICA DE ANALÍTICA EXISTENTE
 # ==========================================
 elif pagina_actual == "📊 Analítica de Portafolio":
+    
     st.markdown("#### 📊 Métricas de Validación del Portafolio")
     num_ini = len(cat_ana) 
     num_hist = len(set(d['Historia_Cod'] for d in datos_ana))
@@ -504,7 +506,7 @@ elif pagina_actual == "📊 Analítica de Portafolio":
         st.plotly_chart(fig_heat, use_container_width=True)
 
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
-    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas).", icon="🚀")
+    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
     datos_exitosos = [d for d in datos_list if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
 
     if not datos_exitosos:
@@ -978,31 +980,50 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
     st.markdown("---")
 
-    # --- ANÁLISIS H: COMPLEJIDAD DE INTERVENCIÓN (Historias Multiacción) ---
-    st.markdown("#### H. Complejidad de Intervención (Historias Multiacción)")
-    st.caption("Mide la sofisticación de la intervención al identificar qué historias abordan el cambio empleando más de una Acción Estratégica simultáneamente.")
+    # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
+    st.markdown("#### H. Complejidad y Alcance de las Historias")
+    st.caption("Analiza qué tan robustas son las narrativas: si requieren múltiples acciones para ejecutarse (Multiacción) o si logran impactar múltiples resultados (Multicambio).")
     
     if not df_conn.empty:
-        historias_acciones = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
-        historias_multiacci = historias_acciones[historias_acciones['Acción Estratégica'] > 1]
-        num_multiacci = len(historias_multiacci)
-        total_hists = len(historias_acciones)
-        pct_multiacci = (num_multiacci / total_hists * 100) if total_hists > 0 else 0
+        # 1. Multiacción
+        hist_acc = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
+        h_multi_acc = hist_acc[hist_acc['Acción Estratégica'] > 1]
         
-        c_m1, c_m2 = st.columns(2)
-        c_m1.metric("Historias con Múltiples Acciones", f"{num_multiacci} de {total_hists}")
-        c_m2.metric("% del Total de Historias", f"{pct_multiacci:.1f}%")
+        # 2. Multicambio
+        hist_cam = df_conn.groupby('Historia_Cod')['Cambio Esperado'].nunique().reset_index()
+        h_multi_cam = hist_cam[hist_cam['Cambio Esperado'] > 1]
         
-        if num_multiacci > 0:
-            df_hist_multi_detalles = df_conn[df_conn['Historia_Cod'].isin(historias_multiacci['Historia_Cod'])]
-            # Agrupar para mostrar qué acciones cruza cada historia
-            lista_multi = df_hist_multi_detalles.groupby(['Iniciativa', 'Historia_Cod']).agg(
-                Cantidad_Acciones=('Acción Estratégica', 'nunique'),
-                Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
-            ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+        total_hists_conectadas = df_conn['Historia_Cod'].nunique()
+        
+        c_h1, c_h2 = st.columns(2)
+        with c_h1:
+            st.write("**1. Historias Multiacción**")
+            st.info("Historias ubicadas en **2 o más Acciones Estratégicas** (Diferentes Filas).")
+            pct_acc = (len(h_multi_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+            st.metric("Historias Multiacción", f"{len(h_multi_acc)} de {total_hists_conectadas}", f"{pct_acc:.1f}% del total trazado", delta_color="off")
             
-            st.write("**Catálogo de Historias Multiacción:**")
-            st.dataframe(lista_multi, hide_index=True, use_container_width=True)
+            if not h_multi_acc.empty:
+                df_multi_acc_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_acc['Historia_Cod'])]
+                lista_acc = df_multi_acc_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                    Cantidad_Acciones=('Acción Estratégica', 'nunique'),
+                    Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
+                ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+                st.dataframe(lista_acc, hide_index=True, use_container_width=True)
+                
+        with c_h2:
+            st.write("**2. Historias Multicambio**")
+            st.info("Historias que aportan a **2 o más Cambios Esperados** (Diferentes Columnas).")
+            pct_cam = (len(h_multi_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+            st.metric("Historias Multicambio", f"{len(h_multi_cam)} de {total_hists_conectadas}", f"{pct_cam:.1f}% del total trazado", delta_color="off")
+            
+            if not h_multi_cam.empty:
+                df_multi_cam_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_cam['Historia_Cod'])].copy()
+                df_multi_cam_det['Cambio_Corto'] = df_multi_cam_det['Cambio Esperado'].map(dict_cambios)
+                lista_cam = df_multi_cam_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                    Cantidad_Cambios=('Cambio Esperado', 'nunique'),
+                    Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
+                ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
+                st.dataframe(lista_cam, hide_index=True, use_container_width=True)
     else:
         st.info("No hay datos suficientes para calcular la complejidad.")
 
