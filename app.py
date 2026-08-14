@@ -2,6 +2,7 @@ import os
 import re
 import textwrap
 import itertools
+import io
 from collections import Counter, defaultdict
 import pandas as pd
 import streamlit as st
@@ -39,7 +40,8 @@ with st.sidebar:
         "📊 Analítica de Portafolio", 
         "🧬 Patrones de Co-Ocurrencia",
         "📈 Reporte Ejecutivo MEL",
-        "📊 Indicadores Ejecutivos para Dirección"
+        "📊 Indicadores Ejecutivos para Dirección",
+        "📥 Centro de Exportación de Datos"
     ])
     st.markdown("---")
 
@@ -98,6 +100,13 @@ def obtener_estado_por_sufijo(codigo):
     if cod_upper.endswith("-EE"): return 'Morado (Efecto Estancado)'
     return 'Negro (Ejemplo de Cambio)' 
 
+def obtener_sigla_estado(estado):
+    if "Ejemplo de Cambio" in estado: return "EC"
+    if "Buen Camino" in estado: return "BC"
+    if "Intención" in estado: return "IC"
+    if "Estancado" in estado: return "EE"
+    return "N/A"
+
 def extraer_corazon_codigo(codigo):
     c_limpio = limpiar_codigo_historia(codigo)
     if c_limpio.endswith(("-EC", "-IC", "-EE", "-BC")):
@@ -119,7 +128,7 @@ def formatear_caja(texto, ancho=35):
     if len(lineas) > 3: return "\n".join(lineas[:3]) + "..."
     return "\n".join(lineas)
 
-# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (CATÁLOGO MAESTRO) ---
+# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
@@ -227,7 +236,8 @@ def extraer_universo_y_conexiones(ruta_archivo):
                             'Texto': textos_hist.get(c_corto, "Narrativa no encontrada."), 
                             'Estado': estado_nom,
                             'Color_Borde': color_fuente,
-                            'Área': extraer_area_codigo(c_corto)
+                            'Área': extraer_area_codigo(c_corto),
+                            'Conexion_Cod': cod_limpio # <--- Clave para exportar matriz cruce
                         })
                         
     return catalogo_iniciativas, datos
@@ -239,11 +249,18 @@ df_conexiones = pd.DataFrame(datos_list)
 # --- DIAGNÓSTICO ESTRICTO EN BARRA LATERAL ---
 with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
-    st.write(f"**Universo Iniciativas:** {len(df_catalogo)}")
+    total_inis_universo = len(df_catalogo)
+    total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
+    
+    st.write(f"**Universo Iniciativas:** {total_inis_universo}")
     st.write(f"**Registros (Conexiones):** {len(datos_list)}")
     st.write(f"**Historias Únicas:** {len(set(d['Historia_Cod'] for d in datos_list))}")
-    st.write(f"**Acciones Estratégicas:** {len(set(d['Acción Estratégica'] for d in datos_list))}")
-    st.write(f"**Cambios Reales:** {len(set(d['Cambio Esperado'] for d in datos_list))}")
+    st.write(f"**Cambios Reales:** {total_cambios}")
+    
+    if total_inis_universo != 44 or total_cambios > 15:
+        st.error(f"⚠️ Alerta: Matriz incompleta o con formatos erróneos.", icon="🚨")
+    else:
+        st.success(f"✅ Matriz Validada 100%.", icon="✅")
     st.markdown("---")
 
 acciones_unicas = sorted(list(set(d['Acción Estratégica'] for d in datos_list)))
@@ -251,22 +268,14 @@ cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-# COLORES GENERALES 
 COLORES_ESTADO = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#351C75'}
 COLORES_HEX_PUROS = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#7B1FA2'}
-
-# COLORES EXCLUSIVOS PARA REPORTE MEL Y DIRECTIVO (Ajuste Visual)
-MEL_COLORS = {
-    'Negro (Ejemplo de Cambio)': '#4CAF50', # Verde
-    'Rojo (Señal de Buen Camino)': '#FF9800', # Naranja
-    'Naranja (Intención de Cambio)': '#2196F3', # Azul
-    'Morado (Efecto Estancado)': '#F44336' # Rojo
-}
+MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Camino)': '#FF9800', 'Naranja (Intención de Cambio)': '#2196F3', 'Morado (Efecto Estancado)': '#F44336'}
 
 # ==========================================
-# GESTIÓN GLOBAL DE FILTROS (Basado en df_catalogo)
+# GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
-if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecutivos para Dirección"]:
+if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecutivos para Dirección", "📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
     with col_fg1:
@@ -773,8 +782,6 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         
         ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada_Hist'].any().reset_index()
         df_aliniacion = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
-        
-        # Corrección del bug de negativos: forzar a Booleano antes de procesar
         df_aliniacion['No_Alineada_Hist'] = df_aliniacion['No_Alineada_Hist'].fillna(False).astype(bool)
         df_aliniacion['Estado_Alin'] = df_aliniacion['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
@@ -811,15 +818,15 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
             st.plotly_chart(fig_al2, use_container_width=True)
 
 # ==========================================
-# PÁGINA 5: INDICADORES EJECUTIVOS (DIRECTIVOS)
+# PÁGINA 5: INDICADORES EJECUTIVOS PARA DIRECCIÓN
 # ==========================================
 elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("### 📊 Indicadores Ejecutivos para Dirección")
     st.caption("Módulo de analítica de alto nivel diseñado para toma de decisiones ágiles.")
     
-    # 0. VALIDACIÓN ESTRUCTURAL (Para auditoría del directivo)
+    # 0. VALIDACIÓN ESTRUCTURAL
     total_inis_universo = len(df_catalogo)
-    total_cambios = len(cambios_unicos)
+    total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
     
     if total_inis_universo != 44 or total_cambios > 15:
         st.error(f"⚠️ **ADVERTENCIA DE INTEGRIDAD:** El sistema detecta {total_inis_universo} Iniciativas (Esperadas: 44) y {total_cambios} Cambios (Máximo Esperado: 15). Revise la matriz de datos original.", icon="🚨")
@@ -834,13 +841,11 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
     df_conn['No_Alineada'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
     
-    # Cálculos a nivel de historia
     hist_alin_df = df_conn.groupby('Historia_Cod')['No_Alineada'].any().reset_index()
     total_hists_alineadas = (~hist_alin_df['No_Alineada']).sum()
     total_hists_desalineadas = hist_alin_df['No_Alineada'].sum()
     historias_des_lista = hist_alin_df[hist_alin_df['No_Alineada']]['Historia_Cod'].tolist()
     
-    # Cálculos a nivel de iniciativa cruzado con el catálogo de 44
     ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada'].any().reset_index()
     df_aliniacion_ejec = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
     df_aliniacion_ejec['No_Alineada'] = df_aliniacion_ejec['No_Alineada'].fillna(False).astype(bool)
@@ -857,11 +862,11 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        st.write("**Lista de Iniciativas Desalineadas:**")
+        st.write("**Iniciativas Desalineadas**")
         if inis_des_lista: st.dataframe(pd.DataFrame({"Iniciativas": inis_des_lista}), use_container_width=True)
         else: st.info("Ninguna iniciativa está desalineada.")
     with col_a2:
-        st.write("**Lista de Historias Desalineadas:**")
+        st.write("**Historias Desalineadas**")
         if historias_des_lista: st.dataframe(pd.DataFrame({"Historias": historias_des_lista}), use_container_width=True)
         else: st.info("Ninguna historia está desalineada.")
     st.markdown("---")
@@ -871,7 +876,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     if not df_conn.empty:
         dist_cambios = df_conn.groupby('Cambio Esperado').size().reset_index(name='Conexiones')
         fig_donut = px.pie(dist_cambios, names='Cambio Esperado', values='Conexiones', hole=0.4, 
-                           title="¿A cuáles cambios estamos aportando más? (Conexiones Totales)")
+                           title="Distribución de Aportes a Cambios Esperados")
         fig_donut.update_traces(textposition='inside', textinfo='percent+label')
         fig_donut.update_layout(template="plotly_white", showlegend=False, height=500)
         st.plotly_chart(fig_donut, use_container_width=True)
@@ -879,7 +884,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
 
     # --- ANÁLISIS C: TOP 3 INICIATIVAS POR PORTAFOLIO (Evidencia) ---
     st.markdown("#### C. Top 3 Iniciativas por Portafolio (Mayor Evidencia)")
-    st.caption("Basado exclusivamente en conexiones con estado: Negro (Ejemplo) + Rojo (Buen Camino).")
+    st.caption("Filtro: Solo conexiones con estado Negro (Ejemplo de Cambio) o Rojo (Señal de Buen Camino).")
     df_exito = df_conn[df_conn['Estado'].isin(['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'])]
     
     if not df_exito.empty:
@@ -892,27 +897,24 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
             st.dataframe(top3_inis, hide_index=True, use_container_width=True)
         with c_c2:
             fig_top_inis = px.bar(top3_inis, x='Conexiones_Evidenciadas', y='Iniciativa', color='Portafolio', 
-                                  orientation='h', text_auto=True, title="Iniciativas Líderes por Portafolio")
+                                  orientation='h', text_auto=True, title="Iniciativas Líderes")
             fig_top_inis.update_layout(template="plotly_white", yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_top_inis, use_container_width=True)
-    else: st.info("No hay evidencia suficiente (Negros o Rojos).")
+    else: st.info("No hay evidencia suficiente.")
     st.markdown("---")
 
-    # Variables globales para mapeo de D, E, F, G
     portafolios_unicos = [p for p in df_catalogo['Portafolio'].unique() if p.strip() != '']
     cambios_unicos_list = list(set(d['Cambio Esperado'] for d in datos_list))
     roles_unicos_list = list(set(d['Acción Estratégica'] for d in datos_list))
 
     # --- ANÁLISIS D & E: CAMBIOS MÁS Y MENOS MOVILIZADOS ---
-    st.markdown("#### D & E. Movilización de Cambios por Portafolio")
-    st.caption("D: Cambios con más conexiones. | E: Oportunidades de mejora (Cambios con 0 o menor presencia).")
+    st.markdown("#### D & E. Cambios Más y Menos Movilizados por Portafolio")
     
     idx_cambios = pd.MultiIndex.from_product([portafolios_unicos, cambios_unicos_list], names=['Portafolio', 'Cambio Esperado'])
     df_base_cambios = pd.DataFrame(index=idx_cambios).reset_index()
     conteos_cambios = df_conn.groupby(['Portafolio', 'Cambio Esperado']).size().reset_index(name='Frecuencia')
     df_full_cambios = pd.merge(df_base_cambios, conteos_cambios, on=['Portafolio', 'Cambio Esperado'], how='left').fillna(0)
     
-    # Calcular Porcentajes internos del portafolio
     totales_cambios_port = df_full_cambios.groupby('Portafolio')['Frecuencia'].transform('sum')
     df_full_cambios['Porcentaje'] = ((df_full_cambios['Frecuencia'] / totales_cambios_port) * 100).fillna(0).round(1).astype(str) + '%'
     df_full_cambios['Cambio_Corto'] = df_full_cambios['Cambio Esperado'].map(dict_cambios)
@@ -922,18 +924,17 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
 
     c_de1, c_de2 = st.columns(2)
     with c_de1:
-        st.write("**Top 3 MÁS Movilizados**")
+        st.write("**Top 3 Cambios MÁS Movilizados**")
         st.dataframe(top3_mas_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
     with c_de2:
-        st.write("**Top 3 MENOS Movilizados (Oportunidad de Mejora)**")
+        st.write("**Top 3 Cambios MENOS Movilizados (Oportunidad de Mejora)**")
         st.dataframe(top3_menos_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia']], hide_index=True, use_container_width=True)
     with st.expander("📚 Leyenda de Cambios (C1 a C15)"):
         for k,v in dict_cambios.items(): st.markdown(f"**{v}:** {k}")
     st.markdown("---")
 
     # --- ANÁLISIS F & G: ROLES MÁS Y MENOS EJERCIDOS ---
-    st.markdown("#### F & G. Capacidades Estratégicas (Roles) por Portafolio")
-    st.caption("F: Roles más utilizados. | G: Capacidades menos ejercidas en el sistema.")
+    st.markdown("#### F & G. Roles Más y Menos Ejercidos por Portafolio")
     
     idx_roles = pd.MultiIndex.from_product([portafolios_unicos, roles_unicos_list], names=['Portafolio', 'Acción Estratégica'])
     df_base_roles = pd.DataFrame(index=idx_roles).reset_index()
@@ -956,3 +957,79 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         st.dataframe(top3_menos_roles[['Portafolio', 'Accion_Corta', 'Frecuencia']], hide_index=True, use_container_width=True)
     with st.expander("📚 Leyenda de Roles (A1 a A6)"):
         for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
+
+# ==========================================
+# PÁGINA 6: EXPORTACIÓN DE DATOS
+# ==========================================
+elif pagina_actual == "📥 Centro de Exportación de Datos":
+    st.markdown("### 📥 Centro de Exportación de Datos")
+    st.caption("Generador automático de matrices en Excel para análisis cualitativo profundo.")
+
+    df_base = pd.DataFrame(datos_list)
+
+    if df_base.empty:
+        st.warning("No hay datos disponibles para exportar.")
+    else:
+        st.markdown("#### 1. Configurar Filtros de Exportación")
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            ports_disp = sorted([p for p in df_base['Portafolio'].unique() if p != ''])
+            ports_sel = st.multiselect("🎯 Filtrar por Portafolio (Dejar vacío para todos):", ports_disp)
+        with col_e2:
+            estados_disp = sorted(df_base['Estado'].unique())
+            estados_sel = st.multiselect("🎨 Filtrar por Estado de Madurez (Dejar vacío para todos):", estados_disp)
+
+        df_filtrado = df_base.copy()
+        if ports_sel: df_filtrado = df_filtrado[df_filtrado['Portafolio'].isin(ports_sel)]
+        if estados_sel: df_filtrado = df_filtrado[df_filtrado['Estado'].isin(estados_sel)]
+
+        st.info(f"**Registros listos para exportar:** {len(df_filtrado)} conexiones encontradas con los filtros actuales.")
+
+        if not df_filtrado.empty:
+            st.markdown("#### 2. Generar y Descargar Matrices")
+            c_dl1, c_dl2 = st.columns(2)
+
+            df_plana = df_filtrado[['Portafolio', 'Iniciativa', 'Historia_Cod', 'Historia_Corta', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Conexion_Cod', 'Texto']].copy()
+            df_plana['Nivel de Avance (Sigla)'] = df_plana['Estado'].apply(obtener_sigla_estado)
+            df_plana = df_plana[['Portafolio', 'Iniciativa', 'Historia_Cod', 'Historia_Corta', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Nivel de Avance (Sigla)', 'Conexion_Cod', 'Texto']]
+            df_plana.columns = ['Portafolio', 'Iniciativa', 'Historia Raíz (Código)', 'Historia Raíz (Corta)', 'Acción Estratégica', 'Cambio Esperado', 'Nivel de Avance (Estado)', 'Sigla Avance', 'Código Conexión Exacta', 'Narrativa']
+
+            buffer_plana = io.BytesIO()
+            with pd.ExcelWriter(buffer_plana, engine='openpyxl') as writer:
+                df_plana.to_excel(writer, index=False, sheet_name='Base_Conexiones')
+            buffer_plana.seek(0)
+
+            with c_dl1:
+                st.markdown("**Formato 1: Base de Datos Plana (Lista)**")
+                st.caption("Ideal para filtrar por columnas y leer narrativas.")
+                st.download_button(
+                    label="⬇️ Descargar Matriz Plana (.xlsx)",
+                    data=buffer_plana,
+                    file_name="Matriz_Plana_Conexiones.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            df_filtrado['Info_Cruce'] = df_filtrado['Conexion_Cod']
+            df_cruce = df_filtrado.pivot_table(
+                index=['Portafolio', 'Iniciativa', 'Historia_Cod', 'Acción Estratégica'],
+                columns='Cambio Esperado',
+                values='Info_Cruce',
+                aggfunc=lambda x: ' | '.join(str(v) for v in x)
+            ).reset_index()
+
+            buffer_cruce = io.BytesIO()
+            with pd.ExcelWriter(buffer_cruce, engine='openpyxl') as writer:
+                df_cruce.to_excel(writer, index=False, sheet_name='Matriz_Cruce')
+            buffer_cruce.seek(0)
+
+            with c_dl2:
+                st.markdown("**Formato 2: Matriz de Cruce (Tabla Dinámica)**")
+                st.caption("Ideal para sumar contribuciones a cambios específicos.")
+                st.download_button(
+                    label="⬇️ Descargar Matriz de Cruce (.xlsx)",
+                    data=buffer_cruce,
+                    file_name="Matriz_Cruce_Portafolio.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
