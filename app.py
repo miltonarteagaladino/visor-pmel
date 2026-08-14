@@ -135,6 +135,19 @@ def formatear_caja(texto, ancho=35):
     if len(lineas) > 3: return "\n".join(lineas[:3]) + "..."
     return "\n".join(lineas)
 
+# CLASIFICADOR DE MACROCATEGORÍAS DE CAMBIO
+def obtener_categoria_cambio(cambio):
+    c = str(cambio).lower()
+    if any(kw in c for kw in ["deliberación, diálogo", "contratación activa", "aprendizajes esenciales", "media sea integral", "formación posmedia"]):
+        return "Temáticos"
+    if any(kw in c for kw in ["creencias habilitantes", "gestión de conocimiento", "liderazgo colaborativo", "prácticas colaborativas", "co-crean", "comprensiones sistémicas"]):
+        return "Transversales"
+    if any(kw in c for kw in ["agendas de iniciativas", "agendas de las juventudes", "mejores capacidades"]):
+        return "De Alto Nivel"
+    if "no en estrategia" in c:
+        return "Desalineado"
+    return "Otros"
+
 # --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (SENSOR ANTI-CACHÉ) ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
@@ -318,6 +331,7 @@ if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecuti
 # PÁGINA 1: MAPA SISTÉMICO 
 # ==========================================
 if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
+    
     col_f3, col_f4 = st.columns(2)
     with col_f3:
         est_sel = st.selectbox("🎨 3. Estado:", ["Todos los estados"] + sorted(list(set(d['Estado'] for d in datos_ana))))
@@ -396,9 +410,10 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 for d in info_h: st.markdown(f"- ➔ {d['Cambio Esperado']} (**{d['Estado']}**)")
 
 # ==========================================
-# PÁGINA 2 Y 3: LÓGICA DE ANALÍTICA EXISTENTE
+# PÁGINA 2: ANALÍTICA DE PORTAFOLIO (Con Tablas Internas para Cambios)
 # ==========================================
 elif pagina_actual == "📊 Analítica de Portafolio":
+    
     st.markdown("#### 📊 Métricas de Validación del Portafolio")
     num_ini = len(cat_ana) 
     num_hist = len(set(d['Historia_Cod'] for d in datos_ana))
@@ -435,34 +450,44 @@ elif pagina_actual == "📊 Analítica de Portafolio":
             fig.update_layout(xaxis_title=titulo_eje, yaxis_title="", margin=dict(l=0, r=0, t=0, b=0), height=max(300, len(items)*40), template="plotly_white")
             return fig
 
-        st.markdown("### 🏆 Enfoque Estratégico (Rankings Cruzados)")
-        c_gen1, c_gen2 = st.columns(2)
-        with c_gen1:
-            fig1 = crear_grafico_ranking(datos_ana, 'Acción Estratégica', 'Blues', 'Número de Historias')
-            if fig1: st.plotly_chart(fig1, use_container_width=True)
-        with c_gen2:
-            fig2 = crear_grafico_ranking(datos_ana, 'Cambio Esperado', 'Teal', 'Número de Historias')
-            if fig2: st.plotly_chart(fig2, use_container_width=True)
+        def renderizar_rankings_con_tabs(datos_seccion, titulo_seccion, color_acc, color_cam):
+            st.markdown(f"### 🏆 {titulo_seccion}")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write("**Acciones Estratégicas**")
+                f_acc = crear_grafico_ranking(datos_seccion, 'Acción Estratégica', color_acc, 'Número de Historias')
+                if f_acc: st.plotly_chart(f_acc, use_container_width=True)
+                else: st.info("Sin datos.")
+            with c2:
+                st.write("**Cambios Esperados (Por Categoría)**")
+                t_all, t_tem, t_trans, t_alt = st.tabs(["[Todos]", "Temáticos", "Transversales", "Alto Nivel"])
+                with t_all:
+                    f_all = crear_grafico_ranking(datos_seccion, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    if f_all: st.plotly_chart(f_all, use_container_width=True)
+                    else: st.info("Sin datos.")
+                with t_tem:
+                    d_tem = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'Temáticos']
+                    f_tem = crear_grafico_ranking(d_tem, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    if f_tem: st.plotly_chart(f_tem, use_container_width=True)
+                    else: st.info("Sin datos temáticos en esta vista.")
+                with t_trans:
+                    d_trans = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'Transversales']
+                    f_trans = crear_grafico_ranking(d_trans, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    if f_trans: st.plotly_chart(f_trans, use_container_width=True)
+                    else: st.info("Sin datos transversales en esta vista.")
+                with t_alt:
+                    d_alt = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'De Alto Nivel']
+                    f_alt = crear_grafico_ranking(d_alt, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    if f_alt: st.plotly_chart(f_alt, use_container_width=True)
+                    else: st.info("Sin datos de alto nivel en esta vista.")
 
-        st.markdown("#### Logros en Terreno (Ejemplos + Señales de Buen Camino)")
+        renderizar_rankings_con_tabs(datos_ana, "Enfoque Estratégico (Universo Completo)", 'Blues', 'Teal')
+        
         datos_logros = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
-        c_log1, c_log2 = st.columns(2)
-        with c_log1:
-            fig3 = crear_grafico_ranking(datos_logros, 'Acción Estratégica', 'Greens', 'Historias (Negras/Rojas)')
-            if fig3: st.plotly_chart(fig3, use_container_width=True)
-        with c_log2:
-            fig4 = crear_grafico_ranking(datos_logros, 'Cambio Esperado', 'Greens', 'Historias (Negras/Rojas)')
-            if fig4: st.plotly_chart(fig4, use_container_width=True)
-
-        st.markdown("#### Intenciones a Futuro (Solo Naranjas)")
+        renderizar_rankings_con_tabs(datos_logros, "Logros en Terreno (Solo Ejemplos + Señales)", 'Greens', 'Greens')
+        
         datos_intenciones = [d for d in datos_ana if d['Estado'] == 'Naranja (Intención de Cambio)']
-        c_int1, c_int2 = st.columns(2)
-        with c_int1:
-            fig5 = crear_grafico_ranking(datos_intenciones, 'Acción Estratégica', 'Oranges', 'Historias (Naranjas)')
-            if fig5: st.plotly_chart(fig5, use_container_width=True)
-        with c_int2:
-            fig6 = crear_grafico_ranking(datos_intenciones, 'Cambio Esperado', 'Oranges', 'Historias (Naranjas)')
-            if fig6: st.plotly_chart(fig6, use_container_width=True)
+        renderizar_rankings_con_tabs(datos_intenciones, "Intenciones a Futuro (Solo Naranjas)", 'Oranges', 'Oranges')
 
         st.markdown("---")
         st.markdown("### 🌡️ Termómetros de Eficacia (Las 7 Tortas)")
