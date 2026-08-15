@@ -268,7 +268,6 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
                         
     return catalogo_iniciativas, datos
 
-# DETECTOR ANTI-CACHÉ
 try:
     file_time = os.path.getmtime("Matriz.xlsx")
 except:
@@ -279,7 +278,6 @@ catalogo_iniciativas, datos_list = extraer_universo_y_conexiones("Matriz.xlsx", 
 df_catalogo = pd.DataFrame(catalogo_iniciativas)
 df_conexiones = pd.DataFrame(datos_list)
 
-# --- DIAGNÓSTICO ESTRICTO EN BARRA LATERAL ---
 with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
     total_inis_universo = len(df_catalogo)
@@ -437,7 +435,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     if not datos_ana:
         st.warning("La iniciativa o portafolio seleccionado tiene 0 historias y 0 conexiones reportadas en la matriz.")
     else:
-        # AHORA ESTOS GRÁFICOS CONTABILIZAN NÚMERO DE CONEXIONES 
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
@@ -493,7 +490,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
         st.markdown("### 🌡️ Termómetros de Eficacia (Las 7 Tortas)")
         st.caption("Gráficos configurados con paleta de color institucional MEL.")
         conteo_gen = Counter([d['Estado'] for d in datos_ana])
-        # Actualización de Colores a MEL_COLORS
         fig_gen = go.Figure(go.Pie(labels=list(conteo_gen.keys()), values=list(conteo_gen.values()), hole=0.4, marker=dict(colors=[MEL_COLORS.get(k, '#000') for k in conteo_gen.keys()])))
         fig_gen.update_layout(title_text="<b>PROMEDIO GENERAL DEL SISTEMA</b>", margin=dict(l=0, r=0, t=40, b=0), height=350, template="plotly_white")
         st.plotly_chart(fig_gen, use_container_width=True)
@@ -503,7 +499,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
             datos_acc = [d['Estado'] for d in datos_ana if d['Acción Estratégica'] == accion]
             if datos_acc:
                 conteo_acc = Counter(datos_acc)
-                # Actualización de Colores a MEL_COLORS
                 fig_acc = go.Figure(go.Pie(labels=list(conteo_acc.keys()), values=list(conteo_acc.values()), hole=0.5, marker=dict(colors=[MEL_COLORS.get(k, '#000') for k in conteo_acc.keys()])))
                 fig_acc.update_layout(title_text=f"<span style='font-size:13px'><b>{accion[:40]}...</b></span>", showlegend=False, margin=dict(l=10, r=10, t=40, b=10), height=220, template="plotly_white")
                 with cols_pie[i % 3]:
@@ -535,8 +530,10 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 # PÁGINA 3: PATRONES DE CO-OCURRENCIA
 # ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
-    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
-    datos_exitosos = [d for d in datos_list if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
+    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas).", icon="🚀")
+    
+    # CORRECCIÓN V41: Usar datos_ana en vez de datos_list
+    datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
 
     if not datos_exitosos:
         st.warning("El portafolio seleccionado no tiene conexiones exitosas.")
@@ -1033,8 +1030,8 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
-    st.markdown("#### H. Complejidad y Alcance de las Historias")
-    st.caption("Analiza qué tan robustas son las narrativas: si requieren múltiples acciones para ejecutarse (Multiacción) o si logran impactar múltiples resultados (Multicambio).")
+    st.markdown("#### H. Complejidad de la Intervención (Multiacción y Multicambio)")
+    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples resultados simultáneamente.")
     
     if not df_conn.empty:
         tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
