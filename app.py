@@ -135,7 +135,6 @@ def formatear_caja(texto, ancho=35):
     if len(lineas) > 3: return "\n".join(lineas[:3]) + "..."
     return "\n".join(lineas)
 
-# CLASIFICADOR DE MACROCATEGORÍAS DE CAMBIO
 def obtener_categoria_cambio(cambio):
     c = str(cambio).lower()
     if any(kw in c for kw in ["deliberación, diálogo", "contratación activa", "aprendizajes esenciales", "media sea integral", "formación posmedia"]):
@@ -148,7 +147,7 @@ def obtener_categoria_cambio(cambio):
         return "Desalineado"
     return "Otros"
 
-# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (SENSOR ANTI-CACHÉ) ---
+# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
@@ -410,7 +409,7 @@ if pagina_actual == "🕸️ Mapa Sistémico (Redes)":
                 for d in info_h: st.markdown(f"- ➔ {d['Cambio Esperado']} (**{d['Estado']}**)")
 
 # ==========================================
-# PÁGINA 2: ANALÍTICA DE PORTAFOLIO (Con Tablas Internas para Cambios)
+# PÁGINA 2: ANALÍTICA DE PORTAFOLIO 
 # ==========================================
 elif pagina_actual == "📊 Analítica de Portafolio":
     
@@ -438,6 +437,7 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     if not datos_ana:
         st.warning("La iniciativa o portafolio seleccionado tiene 0 historias y 0 conexiones reportadas en la matriz.")
     else:
+        # AHORA ESTOS GRÁFICOS CONTABILIZAN NÚMERO DE CONEXIONES 
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
@@ -455,29 +455,29 @@ elif pagina_actual == "📊 Analítica de Portafolio":
             c1, c2 = st.columns(2)
             with c1:
                 st.write("**Acciones Estratégicas**")
-                f_acc = crear_grafico_ranking(datos_seccion, 'Acción Estratégica', color_acc, 'Número de Historias')
+                f_acc = crear_grafico_ranking(datos_seccion, 'Acción Estratégica', color_acc, 'Número de Conexiones')
                 if f_acc: st.plotly_chart(f_acc, use_container_width=True)
                 else: st.info("Sin datos.")
             with c2:
                 st.write("**Cambios Esperados (Por Categoría)**")
                 t_all, t_tem, t_trans, t_alt = st.tabs(["[Todos]", "Temáticos", "Transversales", "Alto Nivel"])
                 with t_all:
-                    f_all = crear_grafico_ranking(datos_seccion, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    f_all = crear_grafico_ranking(datos_seccion, 'Cambio Esperado', color_cam, 'Número de Conexiones')
                     if f_all: st.plotly_chart(f_all, use_container_width=True)
                     else: st.info("Sin datos.")
                 with t_tem:
                     d_tem = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'Temáticos']
-                    f_tem = crear_grafico_ranking(d_tem, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    f_tem = crear_grafico_ranking(d_tem, 'Cambio Esperado', color_cam, 'Número de Conexiones')
                     if f_tem: st.plotly_chart(f_tem, use_container_width=True)
                     else: st.info("Sin datos temáticos en esta vista.")
                 with t_trans:
                     d_trans = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'Transversales']
-                    f_trans = crear_grafico_ranking(d_trans, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    f_trans = crear_grafico_ranking(d_trans, 'Cambio Esperado', color_cam, 'Número de Conexiones')
                     if f_trans: st.plotly_chart(f_trans, use_container_width=True)
                     else: st.info("Sin datos transversales en esta vista.")
                 with t_alt:
                     d_alt = [d for d in datos_seccion if obtener_categoria_cambio(d['Cambio Esperado']) == 'De Alto Nivel']
-                    f_alt = crear_grafico_ranking(d_alt, 'Cambio Esperado', color_cam, 'Número de Historias')
+                    f_alt = crear_grafico_ranking(d_alt, 'Cambio Esperado', color_cam, 'Número de Conexiones')
                     if f_alt: st.plotly_chart(f_alt, use_container_width=True)
                     else: st.info("Sin datos de alto nivel en esta vista.")
 
@@ -491,8 +491,10 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 
         st.markdown("---")
         st.markdown("### 🌡️ Termómetros de Eficacia (Las 7 Tortas)")
+        st.caption("Gráficos configurados con paleta de color institucional MEL.")
         conteo_gen = Counter([d['Estado'] for d in datos_ana])
-        fig_gen = go.Figure(go.Pie(labels=list(conteo_gen.keys()), values=list(conteo_gen.values()), hole=0.4, marker=dict(colors=[COLORES_ESTADO.get(k, '#000') for k in conteo_gen.keys()])))
+        # Actualización de Colores a MEL_COLORS
+        fig_gen = go.Figure(go.Pie(labels=list(conteo_gen.keys()), values=list(conteo_gen.values()), hole=0.4, marker=dict(colors=[MEL_COLORS.get(k, '#000') for k in conteo_gen.keys()])))
         fig_gen.update_layout(title_text="<b>PROMEDIO GENERAL DEL SISTEMA</b>", margin=dict(l=0, r=0, t=40, b=0), height=350, template="plotly_white")
         st.plotly_chart(fig_gen, use_container_width=True)
 
@@ -501,7 +503,8 @@ elif pagina_actual == "📊 Analítica de Portafolio":
             datos_acc = [d['Estado'] for d in datos_ana if d['Acción Estratégica'] == accion]
             if datos_acc:
                 conteo_acc = Counter(datos_acc)
-                fig_acc = go.Figure(go.Pie(labels=list(conteo_acc.keys()), values=list(conteo_acc.values()), hole=0.5, marker=dict(colors=[COLORES_ESTADO.get(k, '#000') for k in conteo_acc.keys()])))
+                # Actualización de Colores a MEL_COLORS
+                fig_acc = go.Figure(go.Pie(labels=list(conteo_acc.keys()), values=list(conteo_acc.values()), hole=0.5, marker=dict(colors=[MEL_COLORS.get(k, '#000') for k in conteo_acc.keys()])))
                 fig_acc.update_layout(title_text=f"<span style='font-size:13px'><b>{accion[:40]}...</b></span>", showlegend=False, margin=dict(l=10, r=10, t=40, b=10), height=220, template="plotly_white")
                 with cols_pie[i % 3]:
                     st.plotly_chart(fig_acc, use_container_width=True)
@@ -528,9 +531,12 @@ elif pagina_actual == "📊 Analítica de Portafolio":
         fig_heat.update_layout(margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Cambios Esperados (C1, C2...)", yaxis_title="Acciones Estratégicas (A1, A2...)", template="plotly_white")
         st.plotly_chart(fig_heat, use_container_width=True)
 
+# ==========================================
+# PÁGINA 3: PATRONES DE CO-OCURRENCIA
+# ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
     st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
-    datos_exitosos = [d for d in datos_list if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)']]
+    datos_exitosos = [d for d in datos_list if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
 
     if not datos_exitosos:
         st.warning("El portafolio seleccionado no tiene conexiones exitosas.")
@@ -1024,6 +1030,114 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         st.dataframe(top3_menos_roles[['Portafolio', 'Accion_Corta', 'Frecuencia']], hide_index=True, use_container_width=True)
     with st.expander("📚 Leyenda de Roles (A1 a A6)"):
         for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
+    st.markdown("---")
+
+    # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
+    st.markdown("#### H. Complejidad y Alcance de las Historias")
+    st.caption("Analiza qué tan robustas son las narrativas: si requieren múltiples acciones para ejecutarse (Multiacción) o si logran impactar múltiples resultados (Multicambio).")
+    
+    if not df_conn.empty:
+        tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
+        
+        with tab_h1:
+            # 1. Multiacción (Historias)
+            hist_acc = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
+            h_multi_acc = hist_acc[hist_acc['Acción Estratégica'] > 1]
+            h_uni_acc = hist_acc[hist_acc['Acción Estratégica'] == 1]
+            
+            # 2. Multicambio (Historias)
+            hist_cam = df_conn.groupby('Historia_Cod')['Cambio Esperado'].nunique().reset_index()
+            h_multi_cam = hist_cam[hist_cam['Cambio Esperado'] > 1]
+            h_uni_cam = hist_cam[hist_cam['Cambio Esperado'] == 1]
+            
+            total_hists_conectadas = df_conn['Historia_Cod'].nunique()
+            
+            c_h1, c_h2 = st.columns(2)
+            with c_h1:
+                st.write("**1. Historias Multiacción**")
+                st.info("Historias ubicadas en **2 o más Acciones Estratégicas** (Diferentes Filas).")
+                pct_multi_a = (len(h_multi_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                pct_uni_a = (len(h_uni_acc) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                
+                st.metric("Historias Multiacción (>1)", f"{len(h_multi_acc)}", f"{pct_multi_a:.1f}% del total trazado", delta_color="off")
+                st.caption(f"*(Para validar: El resto son {len(h_uni_acc)} historias con 1 sola acción, que representan el {pct_uni_a:.1f}%)*")
+                
+                if not h_multi_acc.empty:
+                    df_multi_acc_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_acc['Historia_Cod'])]
+                    lista_acc = df_multi_acc_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                        Cantidad_Acciones=('Acción Estratégica', 'nunique'),
+                        Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+                    st.dataframe(lista_acc, hide_index=True, use_container_width=True)
+                    
+            with c_h2:
+                st.write("**2. Historias Multicambio**")
+                st.info("Historias que aportan a **2 o más Cambios Esperados** (Diferentes Columnas).")
+                pct_multi_c = (len(h_multi_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                pct_uni_c = (len(h_uni_cam) / total_hists_conectadas * 100) if total_hists_conectadas > 0 else 0
+                
+                st.metric("Historias Multicambio (>1)", f"{len(h_multi_cam)}", f"{pct_multi_c:.1f}% del total trazado", delta_color="off")
+                st.caption(f"*(Para validar: El resto son {len(h_uni_cam)} historias con 1 solo cambio, que representan el {pct_uni_c:.1f}%)*")
+                
+                if not h_multi_cam.empty:
+                    df_multi_cam_det = df_conn[df_conn['Historia_Cod'].isin(h_multi_cam['Historia_Cod'])].copy()
+                    df_multi_cam_det['Cambio_Corto'] = df_multi_cam_det['Cambio Esperado'].map(dict_cambios)
+                    lista_cam = df_multi_cam_det.groupby(['Portafolio', 'Iniciativa', 'Historia_Cod']).agg(
+                        Cantidad_Cambios=('Cambio Esperado', 'nunique'),
+                        Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
+                    st.dataframe(lista_cam, hide_index=True, use_container_width=True)
+
+        with tab_h2:
+            # 1. Multiacción (Iniciativas)
+            ini_acc = df_conn.groupby('Iniciativa')['Acción Estratégica'].nunique().reset_index()
+            i_multi_acc = ini_acc[ini_acc['Acción Estratégica'] > 1]
+            i_uni_acc = ini_acc[ini_acc['Acción Estratégica'] == 1]
+            
+            # 2. Multicambio (Iniciativas)
+            ini_cam = df_conn.groupby('Iniciativa')['Cambio Esperado'].nunique().reset_index()
+            i_multi_cam = ini_cam[ini_cam['Cambio Esperado'] > 1]
+            i_uni_cam = ini_cam[ini_cam['Cambio Esperado'] == 1]
+            
+            total_inis_conectadas = df_conn['Iniciativa'].nunique()
+            
+            c_i1, c_i2 = st.columns(2)
+            with c_i1:
+                st.write("**1. Iniciativas Multiacción**")
+                st.info("Iniciativas que emplean **2 o más Acciones Estratégicas** en su portafolio.")
+                p_multi_ia = (len(i_multi_acc) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                p_uni_ia = (len(i_uni_acc) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                
+                st.metric("Iniciativas Multiacción (>1)", f"{len(i_multi_acc)}", f"{p_multi_ia:.1f}% de inis activas", delta_color="off")
+                st.caption(f"*(El resto son {len(i_uni_acc)} iniciativas con 1 sola acción: {p_uni_ia:.1f}%)*")
+                
+                if not i_multi_acc.empty:
+                    df_im_det = df_conn[df_conn['Iniciativa'].isin(i_multi_acc['Iniciativa'])]
+                    lista_i_acc = df_im_det.groupby(['Portafolio', 'Iniciativa']).agg(
+                        Cantidad_Acciones=('Acción Estratégica', 'nunique'),
+                        Acciones_Involucradas=('Acción Estratégica', lambda x: ' | '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Acciones', ascending=False)
+                    st.dataframe(lista_i_acc, hide_index=True, use_container_width=True)
+
+            with c_i2:
+                st.write("**2. Iniciativas Multicambio**")
+                st.info("Iniciativas que logran impactar **2 o más Cambios Esperados**.")
+                p_multi_ic = (len(i_multi_cam) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                p_uni_ic = (len(i_uni_cam) / total_inis_conectadas * 100) if total_inis_conectadas > 0 else 0
+                
+                st.metric("Iniciativas Multicambio (>1)", f"{len(i_multi_cam)}", f"{p_multi_ic:.1f}% de inis activas", delta_color="off")
+                st.caption(f"*(El resto son {len(i_uni_cam)} iniciativas con 1 solo cambio: {p_uni_ic:.1f}%)*")
+                
+                if not i_multi_cam.empty:
+                    df_im_cam_det = df_conn[df_conn['Iniciativa'].isin(i_multi_cam['Iniciativa'])].copy()
+                    df_im_cam_det['Cambio_Corto'] = df_im_cam_det['Cambio Esperado'].map(dict_cambios)
+                    lista_i_cam = df_im_cam_det.groupby(['Portafolio', 'Iniciativa']).agg(
+                        Cantidad_Cambios=('Cambio Esperado', 'nunique'),
+                        Cambios_Involucrados=('Cambio_Corto', lambda x: ', '.join(sorted(set(x))))
+                    ).reset_index().sort_values('Cantidad_Cambios', ascending=False)
+                    st.dataframe(lista_i_cam, hide_index=True, use_container_width=True)
+    else:
+        st.info("No hay datos suficientes para calcular la complejidad.")
 
 # ==========================================
 # PÁGINA 6: EXPORTACIÓN DE DATOS
