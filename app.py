@@ -147,7 +147,7 @@ def obtener_categoria_cambio(cambio):
         return "Desalineado"
     return "Otros"
 
-# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (SENSOR ANTI-CACHÉ) ---
+# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (INMUNE A FORMATOS) ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
@@ -187,7 +187,9 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
         if sheet_name in map_portafolio: return map_portafolio[sheet_name], map_nombre.get(sheet_name, sheet_name)
         if '-' in sheet_name:
             sin_prefijo = sheet_name.split('-', 1)[1]
-            if sin_prefijo in map_portafolio: return map_portafolio[sin_prefijo], map_nombre.get(sin_prefijo, sheet_name)
+            sin_prefijo_limpio = sin_prefijo.strip()
+            if sin_prefijo_limpio in map_portafolio: 
+                return map_portafolio[sin_prefijo_limpio], map_nombre.get(sin_prefijo_limpio, sheet_name)
         return "Sin Portafolio Asignado", sheet_name
 
     datos = []
@@ -198,15 +200,20 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
         porta_asignado, iniciativa_asignada = get_portafolio_y_nombre(sheet_name)
         
         fila_cabeceras = -1
-        for r in range(1, min(30, ws.max_row + 1)):
-            val = ws.cell(row=r, column=1).value
-            if val and str(val).strip().lower().startswith("acciones est"):
-                fila_cabeceras = r
-                break
+        col_cabeceras = -1
+        for r in range(1, 30):
+            for c in range(1, 6):
+                val = ws.cell(row=r, column=c).value
+                if val and isinstance(val, str) and str(val).strip().lower().startswith("acciones est"):
+                    fila_cabeceras = r
+                    col_cabeceras = c
+                    break
+            if fila_cabeceras != -1: break
+            
         if fila_cabeceras == -1: continue
             
         colores_cambios_font = {}
-        for col in range(3, min(18, ws.max_column + 1)):
+        for col in range(col_cabeceras + 2, min(col_cabeceras + 17, ws.max_column + 1)):
             val_cambio = ws.cell(row=fila_cabeceras, column=col).value
             if val_cambio and str(val_cambio).strip() not in ['None', '']:
                 c_texto = re.sub(r'\s+', ' ', str(val_cambio).replace('\n', ' ').strip())
@@ -214,20 +221,20 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
 
         textos_hist = {}
         for r_hist in range(1, ws.max_row + 1):
-            cod = ws.cell(row=r_hist, column=1).value
+            cod = ws.cell(row=r_hist, column=col_cabeceras).value
             if cod and isinstance(cod, str) and '-' in cod:
                 c_str = str(cod).strip().upper()
                 if c_str.startswith(('I-', 'M-', 'B-', 'H-')):
-                    txt = ws.cell(row=r_hist, column=2).value
+                    txt = ws.cell(row=r_hist, column=col_cabeceras + 1).value
                     if not txt or str(txt).strip() in ['None', '']:
-                        txt = ws.cell(row=r_hist, column=3).value
+                        txt = ws.cell(row=r_hist, column=col_cabeceras + 2).value
                     
                     c_core = normalize_core(cod)
                     textos_hist[c_core] = str(txt).strip() if txt and str(txt).strip() not in ['None', ''] else "Sin narrativa documentada."
 
         accion_actual = None
         for row in range(fila_cabeceras + 1, ws.max_row + 1):
-            val_accion = ws.cell(row=row, column=1).value
+            val_accion = ws.cell(row=row, column=col_cabeceras).value
             val_str = str(val_accion).strip() if val_accion else ""
             if val_str.lower().startswith('antecedentes') or val_str.lower().startswith('contexto') or val_str.lower().startswith('récord') or val_str.lower().startswith('record'): break 
                 
@@ -235,7 +242,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
             if nueva_accion: accion_actual = nueva_accion
             if not accion_actual: continue 
             
-            for col in range(3, min(18, ws.max_column + 1)):
+            for col in range(col_cabeceras + 2, min(col_cabeceras + 17, ws.max_column + 1)):
                 val_cambio = ws.cell(row=fila_cabeceras, column=col).value
                 if not val_cambio or str(val_cambio).strip() in ['None', '']: continue
                 
@@ -284,10 +291,11 @@ with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
     total_inis_universo = len(df_catalogo)
     total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
+    total_historias_unicas = df_conexiones['Historia_Cod'].nunique() if not df_conexiones.empty else 0
     
     st.write(f"**Universo Iniciativas:** {total_inis_universo}")
     st.write(f"**Registros (Conexiones):** {len(datos_list)}")
-    st.write(f"**Historias Únicas:** {len(set(d['Historia_Cod'] for d in datos_list))}")
+    st.write(f"**Historias Únicas:** {total_historias_unicas}")
     st.write(f"**Cambios Reales:** {total_cambios}")
     
     if total_inis_universo != 44 or total_cambios > 15:
@@ -308,8 +316,8 @@ MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Cami
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
-# SE HABILITAN LOS FILTROS GLOBALES PARA LA PESTAÑA DE INDICADORES EJECUTIVOS
-if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📥 Centro de Exportación de Datos"]:
+# SE HABILITAN LOS FILTROS GLOBALES PARA CASI TODAS LAS PESTAÑAS (INCLUYENDO REPORTE EJECUTIVO MEL)
+if pagina_actual not in ["📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
     with col_fg1:
@@ -438,15 +446,29 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     if not datos_ana:
         st.warning("La iniciativa o portafolio seleccionado tiene 0 historias y 0 conexiones reportadas en la matriz.")
     else:
+        # GRAFICADOR MEJORADO: AHORA INCLUYE NÚMEROS Y PORCENTAJES EN LAS BARRAS
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
+            total_elementos = len(lista_elementos)
             conteo = Counter(lista_elementos)
             items = sorted(conteo.items(), key=lambda x: x[1], reverse=False)
+            
             y_labels = ["<br>".join(textwrap.wrap(k, width=50)) for k, v in items]
             x_vals = [v for k, v in items]
+            text_vals = [f"{v} ({(v/total_elementos)*100:.1f}%)" for v in x_vals]
             textos_completos = [k for k, v in items]
-            fig = go.Figure(go.Bar(x=x_vals, y=y_labels, orientation='h', marker=dict(color=x_vals, colorscale=color_scale), customdata=textos_completos, hovertemplate="<b>%{customdata}</b><br>Frecuencia: %{x}<extra></extra>"))
+            
+            fig = go.Figure(go.Bar(
+                x=x_vals, 
+                y=y_labels, 
+                orientation='h', 
+                text=text_vals,
+                textposition='auto',
+                marker=dict(color=x_vals, colorscale=color_scale), 
+                customdata=textos_completos, 
+                hovertemplate="<b>%{customdata}</b><br>Conexiones: %{text}<extra></extra>"
+            ))
             fig.update_layout(xaxis_title=titulo_eje, yaxis_title="", margin=dict(l=0, r=0, t=0, b=0), height=max(300, len(items)*40), template="plotly_white")
             return fig
 
@@ -533,7 +555,8 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 # PÁGINA 3: PATRONES DE CO-OCURRENCIA
 # ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
-    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
+    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas).", icon="🚀")
+    
     datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
 
     if not datos_exitosos:
@@ -659,10 +682,10 @@ elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
 # ==========================================
 elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     st.markdown("### 📈 Reporte Ejecutivo MEL")
-    st.caption("Visión macroestructural del Portafolio Institucional (Gráficos optimizados para exportación a PowerPoint)")
+    st.caption("Visión macroestructural del Portafolio Institucional (Responde a los filtros globales superiores)")
     
-    df_conn = pd.DataFrame(datos_list)
-    df_mel_resumen = df_catalogo.copy()
+    df_conn = pd.DataFrame(datos_ana) # AHORA RESPONDE A LOS FILTROS GLOBALES
+    df_mel_resumen = cat_ana.copy() # AHORA RESPONDE A LOS FILTROS GLOBALES
     
     if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado'])
         
@@ -735,7 +758,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         df_conn['Es_Reto'] = df_conn['Estado'] == 'Morado (Efecto Estancado)'
         
         madurez_ini = df_conn.groupby('Iniciativa')[['Es_Maduro', 'Es_Intencion', 'Es_Reto']].sum().reset_index()
-        madurez_ini = pd.merge(df_catalogo[['Iniciativa']], madurez_ini, on='Iniciativa', how='left').fillna(0)
+        madurez_ini = pd.merge(cat_ana[['Iniciativa']], madurez_ini, on='Iniciativa', how='left').fillna(0)
         
         c_l1, c_l2, c_l3 = st.columns(3)
         with c_l1:
@@ -831,7 +854,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         hist_alin_df['Estado_Alin'] = hist_alin_df['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
         ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada_Hist'].any().reset_index()
-        df_aliniacion = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
+        df_aliniacion = pd.merge(cat_ana, ini_alin_df, on='Iniciativa', how='left')
         df_aliniacion['No_Alineada_Hist'] = df_aliniacion['No_Alineada_Hist'].fillna(False).astype(bool)
         df_aliniacion['Estado_Alin'] = df_aliniacion['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
         
