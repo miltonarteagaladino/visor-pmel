@@ -291,11 +291,11 @@ with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
     total_inis_universo = len(df_catalogo)
     total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
-    # Para el cálculo del universo histórico, tomamos el total sin filtros
     total_historias_unicas_universo = df_conexiones['Historia_Cod'].nunique() if not df_conexiones.empty else 0
+    total_conexiones_universo = len(datos_list)
     
     st.write(f"**Universo Iniciativas:** {total_inis_universo}")
-    st.write(f"**Registros (Conexiones):** {len(datos_list)}")
+    st.write(f"**Registros (Conexiones):** {total_conexiones_universo}")
     st.write(f"**Historias Únicas:** {total_historias_unicas_universo}")
     st.write(f"**Cambios Reales:** {total_cambios}")
     
@@ -433,11 +433,12 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     # Agregando porcentajes de validación estructural (con protección de división por cero)
     pct_ini_val = (num_ini / total_inis_universo * 100) if total_inis_universo > 0 else 0
     pct_hist_val = (num_hist / total_historias_unicas_universo * 100) if total_historias_unicas_universo > 0 else 0
+    pct_conn_val = (len(datos_ana) / total_conexiones_universo * 100) if total_conexiones_universo > 0 else 0
     
     km1.metric("Iniciativas Exploradas", num_ini, f"{pct_ini_val:.1f}% del Universo (44)", delta_color="off")
     km2.metric("Historias Trazadas", num_hist, f"{pct_hist_val:.1f}% de Totales (121)", delta_color="off")
     km3.metric("Nodos Únicos", f"{num_acc + num_cam}", f"{num_acc} Acciones | {num_cam} Cambios", delta_color="off")
-    km4.metric("Conexiones Totales", len(datos_ana))
+    km4.metric("Conexiones Totales", len(datos_ana), f"{pct_conn_val:.1f}% del Total ({total_conexiones_universo})", delta_color="off")
     
     if datos_ana:
         total_conexiones_filtro = len(datos_ana)
