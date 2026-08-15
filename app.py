@@ -291,11 +291,12 @@ with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
     total_inis_universo = len(df_catalogo)
     total_cambios = len(set(d['Cambio Esperado'] for d in datos_list))
-    total_historias_unicas = df_conexiones['Historia_Cod'].nunique() if not df_conexiones.empty else 0
+    # Para el cálculo del universo histórico, tomamos el total sin filtros
+    total_historias_unicas_universo = df_conexiones['Historia_Cod'].nunique() if not df_conexiones.empty else 0
     
     st.write(f"**Universo Iniciativas:** {total_inis_universo}")
     st.write(f"**Registros (Conexiones):** {len(datos_list)}")
-    st.write(f"**Historias Únicas:** {total_historias_unicas}")
+    st.write(f"**Historias Únicas:** {total_historias_unicas_universo}")
     st.write(f"**Cambios Reales:** {total_cambios}")
     
     if total_inis_universo != 44 or total_cambios > 15:
@@ -429,18 +430,35 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     num_cam = len(set(d['Cambio Esperado'] for d in datos_ana))
     
     km1, km2, km3, km4 = st.columns(4)
-    km1.metric("Iniciativas del Universo", num_ini)
-    km2.metric("Historias Trazadas", num_hist)
+    # Agregando porcentajes de validación estructural (con protección de división por cero)
+    pct_ini_val = (num_ini / total_inis_universo * 100) if total_inis_universo > 0 else 0
+    pct_hist_val = (num_hist / total_historias_unicas_universo * 100) if total_historias_unicas_universo > 0 else 0
+    
+    km1.metric("Iniciativas Exploradas", num_ini, f"{pct_ini_val:.1f}% del Universo (44)", delta_color="off")
+    km2.metric("Historias Trazadas", num_hist, f"{pct_hist_val:.1f}% de Totales (121)", delta_color="off")
     km3.metric("Nodos Únicos", f"{num_acc + num_cam}", f"{num_acc} Acciones | {num_cam} Cambios", delta_color="off")
     km4.metric("Conexiones Totales", len(datos_ana))
     
     if datos_ana:
+        total_conexiones_filtro = len(datos_ana)
         conteo_est = Counter([d['Estado'] for d in datos_ana])
         ke1, ke2, ke3, ke4 = st.columns(4)
-        ke1.metric("⚫ Ejemplos de Cambio", conteo_est.get('Negro (Ejemplo de Cambio)', 0))
-        ke2.metric("🔴 Señales Buen Camino", conteo_est.get('Rojo (Señal de Buen Camino)', 0))
-        ke3.metric("🟠 Intenciones de Cambio", conteo_est.get('Naranja (Intención de Cambio)', 0))
-        ke4.metric("🟣 Efectos Estancados", conteo_est.get('Morado (Efecto Estancado)', 0))
+        
+        # Extracción y cálculo de porcentajes para Estados
+        c_neg = conteo_est.get('Negro (Ejemplo de Cambio)', 0)
+        c_roj = conteo_est.get('Rojo (Señal de Buen Camino)', 0)
+        c_nar = conteo_est.get('Naranja (Intención de Cambio)', 0)
+        c_mor = conteo_est.get('Morado (Efecto Estancado)', 0)
+        
+        p_neg = (c_neg / total_conexiones_filtro * 100) if total_conexiones_filtro > 0 else 0
+        p_roj = (c_roj / total_conexiones_filtro * 100) if total_conexiones_filtro > 0 else 0
+        p_nar = (c_nar / total_conexiones_filtro * 100) if total_conexiones_filtro > 0 else 0
+        p_mor = (c_mor / total_conexiones_filtro * 100) if total_conexiones_filtro > 0 else 0
+        
+        ke1.metric("⚫ Ejemplos de Cambio", c_neg, f"{p_neg:.1f}% del total", delta_color="off")
+        ke2.metric("🔴 Señales Buen Camino", c_roj, f"{p_roj:.1f}% del total", delta_color="off")
+        ke3.metric("🟠 Intenciones de Cambio", c_nar, f"{p_nar:.1f}% del total", delta_color="off")
+        ke4.metric("🟣 Efectos Estancados", c_mor, f"{p_mor:.1f}% del total", delta_color="off")
     st.markdown("---")
 
     if not datos_ana:
