@@ -147,7 +147,7 @@ def obtener_categoria_cambio(cambio):
         return "Desalineado"
     return "Otros"
 
-# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA ---
+# --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (SENSOR ANTI-CACHÉ) ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
     wb = openpyxl.load_workbook(ruta_archivo, data_only=True)
@@ -268,6 +268,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
                         
     return catalogo_iniciativas, datos
 
+# DETECTOR ANTI-CACHÉ
 try:
     file_time = os.path.getmtime("Matriz.xlsx")
 except:
@@ -278,6 +279,7 @@ catalogo_iniciativas, datos_list = extraer_universo_y_conexiones("Matriz.xlsx", 
 df_catalogo = pd.DataFrame(catalogo_iniciativas)
 df_conexiones = pd.DataFrame(datos_list)
 
+# --- DIAGNÓSTICO ESTRICTO EN BARRA LATERAL ---
 with st.sidebar:
     st.markdown("### 🛠️ Diagnóstico Estructural")
     total_inis_universo = len(df_catalogo)
@@ -306,7 +308,8 @@ MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Cami
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
-if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📊 Indicadores Ejecutivos para Dirección", "📥 Centro de Exportación de Datos"]:
+# SE HABILITAN LOS FILTROS GLOBALES PARA LA PESTAÑA DE INDICADORES EJECUTIVOS
+if pagina_actual not in ["📈 Reporte Ejecutivo MEL", "📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
     with col_fg1:
@@ -530,9 +533,7 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 # PÁGINA 3: PATRONES DE CO-OCURRENCIA
 # ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
-    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas).", icon="🚀")
-    
-    # CORRECCIÓN V41: Usar datos_ana en vez de datos_list
+    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas). Omitiendo intenciones futuras o bloqueos.", icon="🚀")
     datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
 
     if not datos_exitosos:
@@ -896,7 +897,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         st.success(f"✅ **SISTEMA VALIDADO:** 44 Iniciativas cargadas | {total_cambios} Cambios detectados (Incluyendo 'No en estrategia').", icon="✅")
     st.markdown("---")
 
-    df_conn = pd.DataFrame(datos_list)
+    df_conn = pd.DataFrame(datos_ana)
     if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
@@ -909,7 +910,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     historias_des_lista = hist_alin_df[hist_alin_df['No_Alineada']]['Historia_Cod'].tolist()
     
     ini_alin_df = df_conn.groupby('Iniciativa')['No_Alineada'].any().reset_index()
-    df_aliniacion_ejec = pd.merge(df_catalogo, ini_alin_df, on='Iniciativa', how='left')
+    df_aliniacion_ejec = pd.merge(cat_ana, ini_alin_df, on='Iniciativa', how='left')
     df_aliniacion_ejec['No_Alineada'] = df_aliniacion_ejec['No_Alineada'].fillna(False).astype(bool)
     
     total_inis_alineadas = (~df_aliniacion_ejec['No_Alineada']).sum()
@@ -973,60 +974,62 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     else: st.info("No hay evidencia suficiente.")
     st.markdown("---")
 
-    portafolios_unicos = [p for p in df_catalogo['Portafolio'].unique() if p.strip() != '']
+    portafolios_unicos = [p for p in cat_ana['Portafolio'].unique() if p.strip() != '']
     cambios_unicos_list = list(set(d['Cambio Esperado'] for d in datos_list))
     roles_unicos_list = list(set(d['Acción Estratégica'] for d in datos_list))
 
     # --- ANÁLISIS D & E: CAMBIOS MÁS Y MENOS MOVILIZADOS ---
     st.markdown("#### D & E. Cambios Más y Menos Movilizados por Portafolio")
     
-    idx_cambios = pd.MultiIndex.from_product([portafolios_unicos, cambios_unicos_list], names=['Portafolio', 'Cambio Esperado'])
-    df_base_cambios = pd.DataFrame(index=idx_cambios).reset_index()
-    conteos_cambios = df_conn.groupby(['Portafolio', 'Cambio Esperado']).size().reset_index(name='Frecuencia')
-    df_full_cambios = pd.merge(df_base_cambios, conteos_cambios, on=['Portafolio', 'Cambio Esperado'], how='left').fillna(0)
-    
-    totales_cambios_port = df_full_cambios.groupby('Portafolio')['Frecuencia'].transform('sum')
-    df_full_cambios['Porcentaje'] = ((df_full_cambios['Frecuencia'] / totales_cambios_port) * 100).fillna(0).round(1).astype(str) + '%'
-    df_full_cambios['Cambio_Corto'] = df_full_cambios['Cambio Esperado'].map(dict_cambios)
+    if portafolios_unicos:
+        idx_cambios = pd.MultiIndex.from_product([portafolios_unicos, cambios_unicos_list], names=['Portafolio', 'Cambio Esperado'])
+        df_base_cambios = pd.DataFrame(index=idx_cambios).reset_index()
+        conteos_cambios = df_conn.groupby(['Portafolio', 'Cambio Esperado']).size().reset_index(name='Frecuencia')
+        df_full_cambios = pd.merge(df_base_cambios, conteos_cambios, on=['Portafolio', 'Cambio Esperado'], how='left').fillna(0)
+        
+        totales_cambios_port = df_full_cambios.groupby('Portafolio')['Frecuencia'].transform('sum')
+        df_full_cambios['Porcentaje'] = ((df_full_cambios['Frecuencia'] / totales_cambios_port) * 100).fillna(0).round(1).astype(str) + '%'
+        df_full_cambios['Cambio_Corto'] = df_full_cambios['Cambio Esperado'].map(dict_cambios)
 
-    top3_mas_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
-    top3_menos_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
+        top3_mas_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
+        top3_menos_cambios = df_full_cambios.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
 
-    c_de1, c_de2 = st.columns(2)
-    with c_de1:
-        st.write("**Top 3 Cambios MÁS Movilizados**")
-        st.dataframe(top3_mas_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
-    with c_de2:
-        st.write("**Top 3 Cambios MENOS Movilizados (Oportunidad de Mejora)**")
-        st.dataframe(top3_menos_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia']], hide_index=True, use_container_width=True)
-    with st.expander("📚 Leyenda de Cambios (C1 a C15)"):
-        for k,v in dict_cambios.items(): st.markdown(f"**{v}:** {k}")
+        c_de1, c_de2 = st.columns(2)
+        with c_de1:
+            st.write("**Top 3 Cambios MÁS Movilizados**")
+            st.dataframe(top3_mas_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
+        with c_de2:
+            st.write("**Top 3 Cambios MENOS Movilizados (Oportunidad de Mejora)**")
+            st.dataframe(top3_menos_cambios[['Portafolio', 'Cambio_Corto', 'Frecuencia']], hide_index=True, use_container_width=True)
+        with st.expander("📚 Leyenda de Cambios (C1 a C15)"):
+            for k,v in dict_cambios.items(): st.markdown(f"**{v}:** {k}")
     st.markdown("---")
 
     # --- ANÁLISIS F & G: ROLES MÁS Y MENOS EJERCIDOS ---
     st.markdown("#### F & G. Roles Más y Menos Ejercidos por Portafolio")
     
-    idx_roles = pd.MultiIndex.from_product([portafolios_unicos, roles_unicos_list], names=['Portafolio', 'Acción Estratégica'])
-    df_base_roles = pd.DataFrame(index=idx_roles).reset_index()
-    conteos_roles = df_conn.groupby(['Portafolio', 'Acción Estratégica']).size().reset_index(name='Frecuencia')
-    df_full_roles = pd.merge(df_base_roles, conteos_roles, on=['Portafolio', 'Acción Estratégica'], how='left').fillna(0)
-    
-    totales_roles_port = df_full_roles.groupby('Portafolio')['Frecuencia'].transform('sum')
-    df_full_roles['Porcentaje'] = ((df_full_roles['Frecuencia'] / totales_roles_port) * 100).fillna(0).round(1).astype(str) + '%'
-    df_full_roles['Accion_Corta'] = df_full_roles['Acción Estratégica'].map(dict_acciones)
+    if portafolios_unicos:
+        idx_roles = pd.MultiIndex.from_product([portafolios_unicos, roles_unicos_list], names=['Portafolio', 'Acción Estratégica'])
+        df_base_roles = pd.DataFrame(index=idx_roles).reset_index()
+        conteos_roles = df_conn.groupby(['Portafolio', 'Acción Estratégica']).size().reset_index(name='Frecuencia')
+        df_full_roles = pd.merge(df_base_roles, conteos_roles, on=['Portafolio', 'Acción Estratégica'], how='left').fillna(0)
+        
+        totales_roles_port = df_full_roles.groupby('Portafolio')['Frecuencia'].transform('sum')
+        df_full_roles['Porcentaje'] = ((df_full_roles['Frecuencia'] / totales_roles_port) * 100).fillna(0).round(1).astype(str) + '%'
+        df_full_roles['Accion_Corta'] = df_full_roles['Acción Estratégica'].map(dict_acciones)
 
-    top3_mas_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
-    top3_menos_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
+        top3_mas_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, False]).groupby('Portafolio').head(3).reset_index(drop=True)
+        top3_menos_roles = df_full_roles.sort_values(['Portafolio', 'Frecuencia'], ascending=[True, True]).groupby('Portafolio').head(3).reset_index(drop=True)
 
-    c_fg1, c_fg2 = st.columns(2)
-    with c_fg1:
-        st.write("**Top 3 Roles MÁS Ejercidos**")
-        st.dataframe(top3_mas_roles[['Portafolio', 'Accion_Corta', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
-    with c_fg2:
-        st.write("**Top 3 Roles MENOS Ejercidos**")
-        st.dataframe(top3_menos_roles[['Portafolio', 'Accion_Corta', 'Frecuencia']], hide_index=True, use_container_width=True)
-    with st.expander("📚 Leyenda de Roles (A1 a A6)"):
-        for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
+        c_fg1, c_fg2 = st.columns(2)
+        with c_fg1:
+            st.write("**Top 3 Roles MÁS Ejercidos**")
+            st.dataframe(top3_mas_roles[['Portafolio', 'Accion_Corta', 'Frecuencia', 'Porcentaje']], hide_index=True, use_container_width=True)
+        with c_fg2:
+            st.write("**Top 3 Roles MENOS Ejercidos**")
+            st.dataframe(top3_menos_roles[['Portafolio', 'Accion_Corta', 'Frecuencia']], hide_index=True, use_container_width=True)
+        with st.expander("📚 Leyenda de Roles (A1 a A6)"):
+            for k,v in dict_acciones.items(): st.markdown(f"**{v}:** {k}")
     st.markdown("---")
 
     # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
@@ -1037,12 +1040,10 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
         
         with tab_h1:
-            # 1. Multiacción (Historias)
             hist_acc = df_conn.groupby('Historia_Cod')['Acción Estratégica'].nunique().reset_index()
             h_multi_acc = hist_acc[hist_acc['Acción Estratégica'] > 1]
             h_uni_acc = hist_acc[hist_acc['Acción Estratégica'] == 1]
             
-            # 2. Multicambio (Historias)
             hist_cam = df_conn.groupby('Historia_Cod')['Cambio Esperado'].nunique().reset_index()
             h_multi_cam = hist_cam[hist_cam['Cambio Esperado'] > 1]
             h_uni_cam = hist_cam[hist_cam['Cambio Esperado'] == 1]
@@ -1086,12 +1087,10 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
                     st.dataframe(lista_cam, hide_index=True, use_container_width=True)
 
         with tab_h2:
-            # 1. Multiacción (Iniciativas)
             ini_acc = df_conn.groupby('Iniciativa')['Acción Estratégica'].nunique().reset_index()
             i_multi_acc = ini_acc[ini_acc['Acción Estratégica'] > 1]
             i_uni_acc = ini_acc[ini_acc['Acción Estratégica'] == 1]
             
-            # 2. Multicambio (Iniciativas)
             ini_cam = df_conn.groupby('Iniciativa')['Cambio Esperado'].nunique().reset_index()
             i_multi_cam = ini_cam[ini_cam['Cambio Esperado'] > 1]
             i_uni_cam = ini_cam[ini_cam['Cambio Esperado'] == 1]
