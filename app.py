@@ -430,7 +430,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     num_cam = len(set(d['Cambio Esperado'] for d in datos_ana))
     
     km1, km2, km3, km4 = st.columns(4)
-    # Agregando porcentajes de validación estructural (con protección de división por cero)
     pct_ini_val = (num_ini / total_inis_universo * 100) if total_inis_universo > 0 else 0
     pct_hist_val = (num_hist / total_historias_unicas_universo * 100) if total_historias_unicas_universo > 0 else 0
     pct_conn_val = (len(datos_ana) / total_conexiones_universo * 100) if total_conexiones_universo > 0 else 0
@@ -445,7 +444,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
         conteo_est = Counter([d['Estado'] for d in datos_ana])
         ke1, ke2, ke3, ke4 = st.columns(4)
         
-        # Extracción y cálculo de porcentajes para Estados
         c_neg = conteo_est.get('Negro (Ejemplo de Cambio)', 0)
         c_roj = conteo_est.get('Rojo (Señal de Buen Camino)', 0)
         c_nar = conteo_est.get('Naranja (Intención de Cambio)', 0)
@@ -465,7 +463,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
     if not datos_ana:
         st.warning("La iniciativa o portafolio seleccionado tiene 0 historias y 0 conexiones reportadas en la matriz.")
     else:
-        # GRAFICADOR MEJORADO: AHORA INCLUYE NÚMEROS Y PORCENTAJES EN LAS BARRAS
         def crear_grafico_ranking(lista_datos, key_obj, color_scale, titulo_eje):
             lista_elementos = [d[key_obj] for d in lista_datos]
             if not lista_elementos: return None
@@ -703,8 +700,8 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     st.markdown("### 📈 Reporte Ejecutivo MEL")
     st.caption("Visión macroestructural del Portafolio Institucional (Responde a los filtros globales superiores)")
     
-    df_conn = pd.DataFrame(datos_ana) # AHORA RESPONDE A LOS FILTROS GLOBALES
-    df_mel_resumen = cat_ana.copy() # AHORA RESPONDE A LOS FILTROS GLOBALES
+    df_conn = pd.DataFrame(datos_ana) 
+    df_mel_resumen = cat_ana.copy() 
     
     if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado'])
         
@@ -940,7 +937,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     df_conn = pd.DataFrame(datos_ana)
-    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado'])
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
@@ -1176,6 +1173,43 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
                     st.dataframe(lista_i_cam, hide_index=True, use_container_width=True)
     else:
         st.info("No hay datos suficientes para calcular la complejidad.")
+
+    st.markdown("---")
+
+    # --- ANÁLISIS I: TRANSVERSALIDAD DE INICIATIVAS ---
+    st.markdown("#### I. Transversalidad de Iniciativas (Oportunidades Impactadas)")
+    st.caption("Clasifica las iniciativas activas según la cantidad de oportunidades (Educación, Empleo, Libre Elección, Incidencia) que abordan de manera simultánea a través de sus historias.")
+    
+    if not df_conn.empty:
+        def clasificar_oportunidad(area):
+            for op in ['Educación', 'Empleo', 'Libre Elección', 'Incidencia']:
+                if op in str(area): return op
+            return None
+            
+        df_conn['Oportunidad_Macro'] = df_conn['Área'].apply(clasificar_oportunidad)
+        df_trans = df_conn.dropna(subset=['Oportunidad_Macro'])
+        
+        if not df_trans.empty:
+            ini_op = df_trans.groupby('Iniciativa')['Oportunidad_Macro'].nunique().reset_index()
+            ini_op.columns = ['Iniciativa', 'Cantidad_Oportunidades']
+            
+            resumen_trans = ini_op['Cantidad_Oportunidades'].value_counts().sort_index().reset_index()
+            resumen_trans.columns = ['Oportunidades Impactadas', 'Cantidad de Iniciativas']
+            
+            c_t1, c_t2 = st.columns([1, 2])
+            with c_t1:
+                st.write("**Resumen de Transversalidad (Silos vs Cruces)**")
+                st.dataframe(resumen_trans, hide_index=True, use_container_width=True)
+                
+            with c_t2:
+                st.write("**Desglose Directivo**")
+                for i in range(1, 5):
+                    inis = ini_op[ini_op['Cantidad_Oportunidades'] == i]['Iniciativa'].tolist()
+                    if inis:
+                        with st.expander(f"Iniciativas en {i} Oportunidad(es) simultáneas ({len(inis)})"):
+                            st.write(" • " + "\n • ".join(sorted(inis)))
+        else:
+            st.info("Ninguna iniciativa está mapeada a las 4 oportunidades principales en esta vista.")
 
 # ==========================================
 # PÁGINA 6: EXPORTACIÓN DE DATOS
