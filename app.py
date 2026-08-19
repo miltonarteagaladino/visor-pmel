@@ -317,7 +317,6 @@ MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Cami
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
-# SE HABILITAN LOS FILTROS GLOBALES PARA CASI TODAS LAS PESTAÑAS (INCLUYENDO REPORTE EJECUTIVO MEL)
 if pagina_actual not in ["📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
@@ -757,8 +756,17 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         totales = madurez.groupby('Portafolio')['Conexiones'].transform('sum')
         madurez['Porcentaje'] = (madurez['Conexiones'] / totales * 100).round(1)
         
+        # NUEVO ORDENAMIENTO VISUAL ESTRATÉGICO
+        orden_estados = [
+            'Negro (Ejemplo de Cambio)', 
+            'Rojo (Señal de Buen Camino)', 
+            'Morado (Efecto Estancado)', 
+            'Naranja (Intención de Cambio)'
+        ]
+        
         fig_madurez = px.bar(madurez, x='Portafolio', y='Conexiones', color='Estado', 
                              color_discrete_map=MEL_COLORS, text='Porcentaje',
+                             category_orders={"Estado": orden_estados},
                              title="Distribución de Estados de Conexión (Volumen y Porcentaje)")
         fig_madurez.update_traces(texttemplate='%{text}%')
         fig_madurez.update_layout(template="plotly_white", barmode='stack', legend_title="Estado de Madurez")
