@@ -338,9 +338,15 @@ cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-COLORES_ESTADO = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#351C75'}
-COLORES_HEX_PUROS = {'Negro (Ejemplo de Cambio)': '#212121', 'Naranja (Intención de Cambio)': '#FF9800', 'Rojo (Señal de Buen Camino)': '#D32F2F', 'Morado (Efecto Estancado)': '#7B1FA2'}
-MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Camino)': '#FF9800', 'Naranja (Intención de Cambio)': '#2196F3', 'Morado (Efecto Estancado)': '#F44336'}
+# --- ACTUALIZACIÓN DE PALETA DE COLORES MEL ---
+COLORES_ESTADO = {
+    'Negro (Ejemplo de Cambio)': '#4CAF50', # Verde
+    'Rojo (Señal de Buen Camino)': '#2196F3', # Azul
+    'Naranja (Intención de Cambio)': '#9C27B0', # Morado
+    'Morado (Efecto Estancado)': '#F44336' # Rojo
+}
+COLORES_HEX_PUROS = COLORES_ESTADO.copy()
+MEL_COLORS = COLORES_ESTADO.copy()
 
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
@@ -824,7 +830,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
             st.write("**MÁS INTENCIONES (Naranjas)**")
             top2 = madurez_ini.sort_values('Es_Intencion', ascending=False).head(10)
             st.dataframe(top2[['Iniciativa', 'Es_Intencion']].rename(columns={'Es_Intencion': 'Intenciones'}), hide_index=True, use_container_width=True)
-            fig2 = px.bar(top2, x='Es_Intencion', y='Iniciativa', orientation='h', color_discrete_sequence=['#2196F3'], title="Fase de Intención")
+            fig2 = px.bar(top2, x='Es_Intencion', y='Iniciativa', orientation='h', color_discrete_sequence=['#9C27B0'], title="Fase de Intención")
             fig2.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=0, r=0, t=30, b=0), height=300, template="plotly_white")
             st.plotly_chart(fig2, use_container_width=True)
             
@@ -938,20 +944,33 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         res_tabla.columns = ['Portafolio', 'Iniciativas Alineadas', 'Iniciativas Desalineadas', 'Historias Alineadas', 'Historias Desalineadas']
         st.dataframe(res_tabla, use_container_width=True, hide_index=True)
 
-        c_al1, c_al2 = st.columns(2)
-        with c_al1:
-            fig_al1 = px.bar(res_ini, x='Portafolio', y='Cantidad_Iniciativas', color='Estado_Alin', barmode='group',
-                             color_discrete_map={'Alineada': '#4CAF50', 'Desalineada': '#D32F2F'}, text_auto=True,
-                             title="Iniciativas Alineadas vs Desalineadas")
-            fig_al1.update_layout(template="plotly_white")
-            st.plotly_chart(fig_al1, use_container_width=True)
-            
-        with c_al2:
-            fig_al2 = px.bar(res_hist, x='Portafolio', y='Cantidad_Historias', color='Estado_Alin', barmode='group',
-                             color_discrete_map={'Alineada': '#4CAF50', 'Desalineada': '#D32F2F'}, text_auto=True,
-                             title="Historias Alineadas vs Desalineadas")
-            fig_al2.update_layout(template="plotly_white")
-            st.plotly_chart(fig_al2, use_container_width=True)
+    st.markdown("---")
+
+    # ---------------- ANÁLISIS 8: DESGLOSE INTEGRAL POR CAMBIO ----------------
+    st.markdown("#### 8. Desglose Integral por Cambio Esperado")
+    st.caption("Volumen y participación porcentual de Conexiones, Historias e Iniciativas por cada Cambio Esperado, respecto a los totales del portafolio actual.")
+    
+    if not df_conn.empty:
+        total_conn_val = len(df_conn)
+        total_hist_val = df_conn['Historia_Cod'].nunique()
+        total_ini_val = df_conn['Iniciativa'].nunique()
+        
+        cambio_stats = df_conn.groupby('Cambio Esperado').agg(
+            Conexiones=('Iniciativa', 'count'),
+            Historias=('Historia_Cod', 'nunique'),
+            Iniciativas=('Iniciativa', 'nunique')
+        ).reset_index()
+        
+        cambio_stats['% Conexiones'] = ((cambio_stats['Conexiones'] / total_conn_val) * 100).round(1).astype(str) + '%'
+        cambio_stats['% Historias'] = ((cambio_stats['Historias'] / total_hist_val) * 100).round(1).astype(str) + '%'
+        cambio_stats['% Iniciativas'] = ((cambio_stats['Iniciativas'] / total_ini_val) * 100).round(1).astype(str) + '%'
+        
+        cambio_stats = cambio_stats[['Cambio Esperado', 'Conexiones', '% Conexiones', 'Historias', '% Historias', 'Iniciativas', '% Iniciativas']]
+        cambio_stats = cambio_stats.sort_values('Conexiones', ascending=False)
+        
+        st.dataframe(cambio_stats, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay datos para mostrar.")
 
 # ==========================================
 # PÁGINA 5: INDICADORES EJECUTIVOS PARA DIRECCIÓN
@@ -971,7 +990,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     df_conn = pd.DataFrame(datos_ana)
-    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Historia_Corta', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto', 'Acrónimo'])
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto', 'Acrónimo'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
