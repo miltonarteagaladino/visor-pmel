@@ -54,12 +54,33 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 2. DECODIFICADORES GLOBALES ---
+# --- 2. DECODIFICADORES GLOBALES Y NLP ---
 MAPA_AREAS = {
     'ED': 'Educación', 'EM': 'Empleo', 'LE': 'Libre Elección', 'IN': 'Incidencia',
     'AA': 'Aprendizaje/Adaptación', 'TC': 'Transformación Cultural', 'CC': 'Comunicaciones',
     'DE': 'Dirección Ejecutiva', 'SA': 'Servicios Administrativos'
 }
+
+dict_edu = r'\b(estudiant|alumno|docente|profesor|maestro|rector|directiv|orientador|institucion|colegio|escuela|universidad|ies|sena|aprendizaj|obligatori|educacion media|posmedia|educacion superior|formacion|trayectoria educativa|desercion|retencion|permanencia|calidad educativa|curriculo|competencia|bilinguismo|habilidad|pertinencia|alternancia|brecha|aprender|ensenar|estudiar|graduar|matricular|evaluar|transitar|conectar|formar|capacitar|snc|mnc|pruebas saber|beca|financiamiento educativo)\b'
+dict_emp = r'\b(vulnerable|migrante|discapacidad|buscador de empleo|trabajador|empleado|empleador|empresa|sector privado|sector productivo|agencia de empleo|caja de compensacion|ccf|servicio publico de empleo|spe|oso|trayectoria laboral|trayectoria de empleo|empleo|desempleo|trabaj|mercado laboral|insercion|vacante|contratacion|ingreso|salario|prestacion|emprendimient|intermediacion|ruta de empleo|barrera de acceso|talento humano|economia|productividad|enganche|emplear|contratar|buscar empleo|reclutar|vincular|seleccionar|postular|emprender|primer empleo|subsidio|incentivo)\b'
+dict_inc = r'\b(gobierno|estado|alcaldia|gobernacion|alcalde|gobernador|funcionario|concejo|asamblea|congreso|lider social|sociedad civil|osc|colectivo|veeduria|ciudadania|participacion juvenil|consejo|plataforma juvenil|politica publica|agenda|incidencia|gestion publica|plan de desarrollo|pdt|presupuesto|control social|rendicion de cuenta|transparencia|datos abiertos|informacion publica|bienes publicos|derechos|advocacy|exigibilidad|monitore|incidir|proponer|demandar|exigir|vigilar|evalua|debatir|dialogar|concertar|cabildear|lobby|formular|implementar|movilizar|leye|decreto|ordenanza|acuerdo|como vamos|encuesta)\b'
+dict_lib = r'\b(ciudadano|votante|elector|candidato|partido politico|movimiento ciudadano|registraduria|consejo nacional electoral|cne|medios de comunicacion|opinion publica|democracia|eleccion|voto|campana|sistema electoral|cultura politica|derechos politicos|abstencion|clientelismo|corrupcion|debate|propuesta|votar|elegir|informar|deliberar|representar|tarjeton|urna|plebiscito|referendo|consulta|pedagogia)\b'
+
+def limpiar_para_nlp(texto):
+    if not texto or str(texto).strip() in ['None', 'Sin narrativa documentada.']: return ""
+    t = str(texto).lower()
+    t = unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
+    return t
+
+def nlp_oportunidades(texto_crudo):
+    texto = limpiar_para_nlp(texto_crudo)
+    if not texto: return []
+    oportunidades = set()
+    if re.search(dict_edu, texto): oportunidades.add('Educación')
+    if re.search(dict_emp, texto): oportunidades.add('Empleo')
+    if re.search(dict_inc, texto): oportunidades.add('Incidencia')
+    if re.search(dict_lib, texto): oportunidades.add('Libre Elección')
+    return list(oportunidades)
 
 def extraer_area_codigo(codigo):
     partes = codigo.split('-')
@@ -138,47 +159,15 @@ def formatear_caja(texto, ancho=35):
 
 def obtener_categoria_cambio(cambio):
     c = str(cambio).lower()
-    if any(kw in c for kw in ["deliberación, diálogo", "contratación activa", "aprendizajes esenciales", "media sea integral", "formación posmedia"]):
+    if any(kw in c for kw in ["deliberacion, dialogo", "contratacion activa", "aprendizajes esenciales", "media sea integral", "formacion posmedia"]):
         return "Temáticos"
-    if any(kw in c for kw in ["creencias habilitantes", "gestión de conocimiento", "liderazgo colaborativo", "prácticas colaborativas", "co-crean", "comprensiones sistémicas"]):
+    if any(kw in c for kw in ["creencias habilitantes", "gestion de conocimiento", "liderazgo colaborativo", "practicas colaborativas", "co-crean", "comprensiones sistemicas"]):
         return "Transversales"
     if any(kw in c for kw in ["agendas de iniciativas", "agendas de las juventudes", "mejores capacidades"]):
         return "De Alto Nivel"
     if "no en estrategia" in c:
         return "Desalineado"
     return "Otros"
-
-# ==========================================
-# MOTOR NLP: PROCESAMIENTO DE LENGUAJE NATURAL
-# ==========================================
-def limpiar_para_nlp(texto):
-    # Quita tildes y pasa a minúsculas para un match perfecto
-    if not texto or str(texto).strip() in ['None', 'Sin narrativa documentada.']: return ""
-    t = str(texto).lower()
-    t = unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
-    return t
-
-def nlp_oportunidades(texto_crudo):
-    texto = limpiar_para_nlp(texto_crudo)
-    if not texto: return []
-    
-    oportunidades = set()
-    
-    # Diccionarios blindados sin tildes (regex) para NLP
-    dict_edu = r'\b(estudiante|alumno|docente|profesor|maestro|rector|orientador|institucion educativa|colegio|escuela|universidad|ies|sena|aprendizaj|educacion media|posmedia|educacion superior|formacion tecnica|formacion tecnologica|trayectoria educativa|desercion|calidad educativa|curriculo|competencia|bilinguismo|brecha educativa|enseñar|matricular|marco nacional de cualificaciones|pruebas saber|beca|financiamiento educativo)\b'
-    dict_emp = r'\b(buscador de empleo|trabajador|empleador|empresa|sector privado|sector productivo|agencia de empleo|caja de compensacion|ccf|servicio publico de empleo|spe|orientacion socio|oso|trayectoria laboral|trayectoria de empleo|empleo formal|empleo informal|empleo inclusivo|desempleo|mercado laboral|insercion laboral|vacante|contratacion|salario|prestacion|intermediacion|ruta de empleo|talento humano|enganche|emplear|contratar|buscar empleo|reclutar|vincular|seleccionar|postular|emprender|emprendimiento|primer empleo|subsidio|incentivo)\b'
-    dict_inc = r'\b(gobierno|estado|alcaldia|gobernacion|alcalde|gobernador|funcionario|concejo|asamblea|congreso|lider social|sociedad civil|osc|veeduria|ciudadania|participacion juvenil|consejo de juventud|plataforma juvenil|politica publica|agenda publica|agenda local|incidencia|gestion publica|plan de desarrollo|pdt|presupuesto|control social|rendicion de cuenta|transparencia|datos abiertos|informacion publica|bienes publicos|advocacy|exigibilidad|como vamos|encuesta de percepcion|incidir|cabildear|lobby)\b'
-    dict_lib = r'\b(ciudadano|votante|elector|candidato|partido politico|movimiento ciudadano|registraduria|consejo nacional electoral|cne|medios de comunicacion|opinion publica|democracia|eleccion|voto|campaña|sistema electoral|cultura politica|derechos politicos|abstencion|clientelismo|corrupcion electoral|debate|votar|elegir|tarjeton|urna|plebiscito|referendo|consulta|pedagogia electoral)\b'
-
-    if re.search(dict_edu, texto): oportunidades.add('Educación')
-    if re.search(dict_emp, texto): oportunidades.add('Empleo')
-    if re.search(dict_inc, texto): oportunidades.add('Incidencia')
-    if re.search(dict_lib, texto): oportunidades.add('Libre Elección')
-    
-    # Si la máquina no encontró nada con el diccionario, asignamos "Oportunidad No Detectada"
-    if not oportunidades:
-        return ["Otra / No Detectada por NLP"]
-    return list(oportunidades)
 
 # --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (INMUNE A FORMATOS) ---
 @st.cache_data
@@ -188,6 +177,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
     catalogo_iniciativas = []
     map_portafolio = {}
     map_nombre = {}
+    map_acronimo = {}
     
     if "Matriz Portafolio" in wb.sheetnames:
         ws_port = wb["Matriz Portafolio"]
@@ -215,6 +205,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
                     })
                     map_portafolio[acronimo] = porta_limpio
                     map_nombre[acronimo] = nom
+                    map_acronimo[nom] = acronimo
 
     def get_portafolio_y_nombre(sheet_name):
         if sheet_name in map_portafolio: return map_portafolio[sheet_name], map_nombre.get(sheet_name, sheet_name)
@@ -293,6 +284,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
                         c_core_lookup = normalize_core(cod_limpio)
                         
                         datos.append({
+                            'Acrónimo': map_acronimo.get(iniciativa_asignada, "N/A"),
                             'Portafolio': porta_asignado,
                             'Iniciativa': iniciativa_asignada, 
                             'Acción Estratégica': accion_actual,
@@ -350,7 +342,6 @@ MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Cami
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
-# SE HABILITAN LOS FILTROS GLOBALES PARA CASI TODAS LAS PESTAÑAS
 if pagina_actual not in ["📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
@@ -790,7 +781,6 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         totales = madurez.groupby('Portafolio')['Conexiones'].transform('sum')
         madurez['Porcentaje'] = (madurez['Conexiones'] / totales * 100).round(1)
         
-        # ORDENAMIENTO VISUAL ESTRATÉGICO FORZADO
         orden_estados = [
             'Negro (Ejemplo de Cambio)', 
             'Rojo (Señal de Buen Camino)', 
@@ -906,7 +896,6 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     if not df_conn.empty:
         df_conn['No_Alineada_Hist'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
         
-        # ALINEACION GLOBAL (TORTAS RESTAURADAS)
         st.write("**Resumen Global de Alineación**")
         hist_alin_df = df_conn.groupby(['Historia_Cod', 'Portafolio'])['No_Alineada_Hist'].any().reset_index()
         hist_alin_df['Estado_Alin'] = hist_alin_df['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
@@ -979,7 +968,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     df_conn = pd.DataFrame(datos_ana)
-    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto'])
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto', 'Acrónimo'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
@@ -1115,7 +1104,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
 
     # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
     st.markdown("#### H. Complejidad de la Intervención (Multiacción y Multicambio)")
-    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples resultados simultáneamente.")
+    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples impactos simultáneamente.")
     
     if not df_conn.empty:
         tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
@@ -1219,45 +1208,83 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     # --- ANÁLISIS I: TRANSVERSALIDAD DE INICIATIVAS (MOTOR NLP) ---
-    st.markdown("#### I. Transversalidad de Iniciativas (Oportunidades Impactadas)")
-    st.caption("Clasifica las iniciativas activas leyendo y procesando mediante Inteligencia Artificial (NLP) los textos narrativos de todas sus historias para detectar qué Oportunidades impactan en la realidad.")
+    st.markdown("#### I. Transversalidad de Iniciativas (Oportunidades Impactadas por NLP)")
+    st.caption("El algoritmo de Procesamiento de Lenguaje Natural lee todas las historias documentadas e identifica las intersecciones reales a partir de campos semánticos.")
     
     if not df_conn.empty:
-        # Extraer historias únicas para no sobre-procesar textos repetidos
-        historias_unicas = df_conn.drop_duplicates(subset=['Iniciativa', 'Historia_Cod', 'Texto']).copy()
-        
-        # Procesar con el motor NLP
+        historias_unicas = df_conn.drop_duplicates(subset=['Iniciativa', 'Historia_Cod', 'Texto', 'Acrónimo']).copy()
         historias_unicas['Oportunidades_NLP'] = historias_unicas['Texto'].apply(nlp_oportunidades)
         
-        # Expandir la lista de oportunidades para poder agruparlas
+        # Eliminar las no detectadas para los cruces estratégicos
         df_exploded = historias_unicas.explode('Oportunidades_NLP')
-        df_exploded = df_exploded.dropna(subset=['Oportunidades_NLP'])
+        df_validas = df_exploded[df_exploded['Oportunidades_NLP'] != 'Otra / No Detectada por NLP']
         
-        # Agrupar por Iniciativa para ver la transversalidad real
-        ini_ops = df_exploded.groupby('Iniciativa')['Oportunidades_NLP'].unique().reset_index()
-        ini_ops['Num_Oportunidades'] = ini_ops['Oportunidades_NLP'].apply(len)
-        ini_ops['Oportunidades_Detectadas'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted(x)))
-        
-        total_inis_nlp = len(ini_ops)
-        
-        if total_inis_nlp > 0:
-            resumen_trans = ini_ops['Num_Oportunidades'].value_counts().sort_index().reset_index()
-            resumen_trans.columns = ['Oportunidades Impactadas', 'Cantidad de Iniciativas']
-            resumen_trans['Porcentaje'] = (resumen_trans['Cantidad de Iniciativas'] / total_inis_nlp * 100).round(1).astype(str) + '%'
+        if not df_validas.empty:
+            ini_ops = df_validas.groupby(['Iniciativa', 'Acrónimo'])['Oportunidades_NLP'].unique().reset_index()
+            ini_ops['Num_Oportunidades'] = ini_ops['Oportunidades_NLP'].apply(len)
+            ini_ops['Combinacion'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted(x)))
             
-            c_t1, c_t2 = st.columns([1, 2])
-            with c_t1:
-                st.write("**Resumen de Transversalidad (Silos vs Cruces)**")
-                st.dataframe(resumen_trans, hide_index=True, use_container_width=True)
+            total_inis_activas = len(df_conn['Iniciativa'].unique())
+            
+            # --- SECCIÓN A: LISTAS Y DESGLOSE ---
+            st.markdown("##### 1. Desglose Estructural de Transversalidad")
+            resultados = ini_ops.groupby(['Num_Oportunidades', 'Combinacion'])['Iniciativa'].apply(list).reset_index()
+            
+            cols_desglose = st.columns(4)
+            for num in [1, 2, 3, 4]:
+                with cols_desglose[num-1]:
+                    st.write(f"**Aportan a {num} Oportunidad(es)**")
+                    sub_res = resultados[resultados['Num_Oportunidades'] == num]
+                    if sub_res.empty:
+                        st.info("Ninguna iniciativa")
+                    else:
+                        for _, row in sub_res.iterrows():
+                            nombres = sorted(row['Iniciativa'])
+                            count = len(nombres)
+                            pct = (count / total_inis_activas) * 100
+                            with st.expander(f"{row['Combinacion']} ({count} Inis - {pct:.1f}%)"):
+                                st.write(" • " + "\n • ".join(nombres))
+
+            # --- SECCIÓN B: ECOSISTEMA DE TRANSVERSALIDAD (MALLA DE VENN DUAL) ---
+            st.markdown("##### 2. Ecosistema de Transversalidad (Equivalente Dinámico a Diagrama de Venn)")
+            st.caption("Las esferas grandes representan las 4 Oportunidades. Los nodos pequeños son los acrónimos de las Iniciativas, ubicados dinámicamente en las intersecciones (cruces) que comparten.")
+            
+            net_venn = Network(height='600px', width='100%', directed=False, bgcolor='#FFFFFF', font_color='#202124')
+            net_venn.set_options("""
+            var options = {
+              "nodes": { "borderWidth": 2, "borderWidthSelected": 4 },
+              "edges": { "smooth": { "type": "continuous", "forceDirection": "none" }, "width": 1.5, "color": { "inherit": false, "color": "#BDBDBD" } },
+              "physics": {
+                "forceAtlas2Based": { "gravitationalConstant": -120, "centralGravity": 0.01, "springLength": 100, "springConstant": 0.08 },
+                "minVelocity": 0.75,
+                "solver": "forceAtlas2Based"
+              }
+            }
+            """)
+            
+            color_map = {
+                'Educación': {'background': '#1976D2', 'border': '#0D47A1'},
+                'Empleo': {'background': '#388E3C', 'border': '#1B5E20'},
+                'Incidencia': {'background': '#F57C00', 'border': '#E65100'},
+                'Libre Elección': {'background': '#7B1FA2', 'border': '#4A148C'}
+            }
+            
+            for op, col in color_map.items():
+                net_venn.add_node(op, label=op, size=45, color=col, font={'size': 20, 'color': '#FFFFFF', 'bold': True}, shape='circle')
                 
-            with c_t2:
-                st.write("**Desglose Directivo**")
-                for i in range(1, 5):
-                    sub_df = ini_ops[ini_ops['Num_Oportunidades'] == i]
-                    if not sub_df.empty:
-                        with st.expander(f"Iniciativas en {i} Oportunidad(es) simultáneas ({len(sub_df)})"):
-                            for idx, row in sub_df.iterrows():
-                                st.write(f" • **{row['Iniciativa']}** ➔ *(Cruza: {row['Oportunidades_Detectadas']})*")
+            for _, row in ini_ops.iterrows():
+                acronimo = row['Acrónimo']
+                if acronimo == 'N/A' or not acronimo: acronimo = row['Iniciativa'][:10]
+                
+                # Asignar un color visual neutro para las iniciativas
+                net_venn.add_node(acronimo, label=acronimo, size=20, color={'background': '#EEEEEE', 'border': '#9E9E9E'}, font={'size': 14}, shape='box')
+                
+                for op in row['Oportunidades_NLP']:
+                    net_venn.add_edge(acronimo, op)
+                    
+            html_venn = net_venn.generate_html()
+            components.html(html_venn, height=620)
+            
         else:
             st.info("No se detectaron textos válidos para procesar.")
 
