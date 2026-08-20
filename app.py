@@ -3,6 +3,7 @@ import re
 import textwrap
 import itertools
 import io
+import unicodedata
 from collections import Counter, defaultdict
 import pandas as pd
 import streamlit as st
@@ -147,6 +148,38 @@ def obtener_categoria_cambio(cambio):
         return "Desalineado"
     return "Otros"
 
+# ==========================================
+# MOTOR NLP: PROCESAMIENTO DE LENGUAJE NATURAL
+# ==========================================
+def limpiar_para_nlp(texto):
+    # Quita tildes y pasa a minúsculas para un match perfecto
+    if not texto or str(texto).strip() in ['None', 'Sin narrativa documentada.']: return ""
+    t = str(texto).lower()
+    t = unicodedata.normalize('NFKD', t).encode('ASCII', 'ignore').decode('utf-8')
+    return t
+
+def nlp_oportunidades(texto_crudo):
+    texto = limpiar_para_nlp(texto_crudo)
+    if not texto: return []
+    
+    oportunidades = set()
+    
+    # Diccionarios blindados sin tildes (regex) para NLP
+    dict_edu = r'\b(estudiante|alumno|docente|profesor|maestro|rector|orientador|institucion educativa|colegio|escuela|universidad|ies|sena|aprendizaj|educacion media|posmedia|educacion superior|formacion tecnica|formacion tecnologica|trayectoria educativa|desercion|calidad educativa|curriculo|competencia|bilinguismo|brecha educativa|enseñar|matricular|marco nacional de cualificaciones|pruebas saber|beca|financiamiento educativo)\b'
+    dict_emp = r'\b(buscador de empleo|trabajador|empleador|empresa|sector privado|sector productivo|agencia de empleo|caja de compensacion|ccf|servicio publico de empleo|spe|orientacion socio|oso|trayectoria laboral|trayectoria de empleo|empleo formal|empleo informal|empleo inclusivo|desempleo|mercado laboral|insercion laboral|vacante|contratacion|salario|prestacion|intermediacion|ruta de empleo|talento humano|enganche|emplear|contratar|buscar empleo|reclutar|vincular|seleccionar|postular|emprender|emprendimiento|primer empleo|subsidio|incentivo)\b'
+    dict_inc = r'\b(gobierno|estado|alcaldia|gobernacion|alcalde|gobernador|funcionario|concejo|asamblea|congreso|lider social|sociedad civil|osc|veeduria|ciudadania|participacion juvenil|consejo de juventud|plataforma juvenil|politica publica|agenda publica|agenda local|incidencia|gestion publica|plan de desarrollo|pdt|presupuesto|control social|rendicion de cuenta|transparencia|datos abiertos|informacion publica|bienes publicos|advocacy|exigibilidad|como vamos|encuesta de percepcion|incidir|cabildear|lobby)\b'
+    dict_lib = r'\b(ciudadano|votante|elector|candidato|partido politico|movimiento ciudadano|registraduria|consejo nacional electoral|cne|medios de comunicacion|opinion publica|democracia|eleccion|voto|campaña|sistema electoral|cultura politica|derechos politicos|abstencion|clientelismo|corrupcion electoral|debate|votar|elegir|tarjeton|urna|plebiscito|referendo|consulta|pedagogia electoral)\b'
+
+    if re.search(dict_edu, texto): oportunidades.add('Educación')
+    if re.search(dict_emp, texto): oportunidades.add('Empleo')
+    if re.search(dict_inc, texto): oportunidades.add('Incidencia')
+    if re.search(dict_lib, texto): oportunidades.add('Libre Elección')
+    
+    # Si la máquina no encontró nada con el diccionario, asignamos "Oportunidad No Detectada"
+    if not oportunidades:
+        return ["Otra / No Detectada por NLP"]
+    return list(oportunidades)
+
 # --- 3. EXTRACCIÓN ESTRUCTURAL JERÁRQUICA (INMUNE A FORMATOS) ---
 @st.cache_data
 def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
@@ -266,7 +299,7 @@ def extraer_universo_y_conexiones(ruta_archivo, file_mtime):
                             'Cambio Esperado': cambio_texto, 
                             'Historia_Cod': c_corto, 
                             'Historia_Corta': acortar_codigo(c_corto),
-                            'Texto': textos_hist.get(c_core_lookup, "Narrativa no encontrada."), 
+                            'Texto': textos_hist.get(c_core_lookup, "Sin narrativa documentada."), 
                             'Estado': estado_nom,
                             'Color_Borde': color_fuente,
                             'Área': extraer_area_codigo(c_corto),
@@ -317,6 +350,7 @@ MEL_COLORS = {'Negro (Ejemplo de Cambio)': '#4CAF50', 'Rojo (Señal de Buen Cami
 # ==========================================
 # GESTIÓN GLOBAL DE FILTROS 
 # ==========================================
+# SE HABILITAN LOS FILTROS GLOBALES PARA CASI TODAS LAS PESTAÑAS
 if pagina_actual not in ["📥 Centro de Exportación de Datos"]:
     st.markdown("### 🎛️ Filtros Globales (Jerarquía Estricta)")
     col_fg1, col_fg2 = st.columns(2)
@@ -756,7 +790,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         totales = madurez.groupby('Portafolio')['Conexiones'].transform('sum')
         madurez['Porcentaje'] = (madurez['Conexiones'] / totales * 100).round(1)
         
-        # NUEVO ORDENAMIENTO VISUAL ESTRATÉGICO
+        # ORDENAMIENTO VISUAL ESTRATÉGICO FORZADO
         orden_estados = [
             'Negro (Ejemplo de Cambio)', 
             'Rojo (Señal de Buen Camino)', 
@@ -945,7 +979,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     df_conn = pd.DataFrame(datos_ana)
-    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área'])
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
@@ -1184,25 +1218,32 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
 
     st.markdown("---")
 
-    # --- ANÁLISIS I: TRANSVERSALIDAD DE INICIATIVAS ---
+    # --- ANÁLISIS I: TRANSVERSALIDAD DE INICIATIVAS (MOTOR NLP) ---
     st.markdown("#### I. Transversalidad de Iniciativas (Oportunidades Impactadas)")
-    st.caption("Clasifica las iniciativas activas según la cantidad de oportunidades (Educación, Empleo, Libre Elección, Incidencia) que abordan de manera simultánea a través de sus historias.")
+    st.caption("Clasifica las iniciativas activas leyendo y procesando mediante Inteligencia Artificial (NLP) los textos narrativos de todas sus historias para detectar qué Oportunidades impactan en la realidad.")
     
     if not df_conn.empty:
-        def clasificar_oportunidad(area):
-            for op in ['Educación', 'Empleo', 'Libre Elección', 'Incidencia']:
-                if op in str(area): return op
-            return None
-            
-        df_conn['Oportunidad_Macro'] = df_conn['Área'].apply(clasificar_oportunidad)
-        df_trans = df_conn.dropna(subset=['Oportunidad_Macro'])
+        # Extraer historias únicas para no sobre-procesar textos repetidos
+        historias_unicas = df_conn.drop_duplicates(subset=['Iniciativa', 'Historia_Cod', 'Texto']).copy()
         
-        if not df_trans.empty:
-            ini_op = df_trans.groupby('Iniciativa')['Oportunidad_Macro'].nunique().reset_index()
-            ini_op.columns = ['Iniciativa', 'Cantidad_Oportunidades']
-            
-            resumen_trans = ini_op['Cantidad_Oportunidades'].value_counts().sort_index().reset_index()
+        # Procesar con el motor NLP
+        historias_unicas['Oportunidades_NLP'] = historias_unicas['Texto'].apply(nlp_oportunidades)
+        
+        # Expandir la lista de oportunidades para poder agruparlas
+        df_exploded = historias_unicas.explode('Oportunidades_NLP')
+        df_exploded = df_exploded.dropna(subset=['Oportunidades_NLP'])
+        
+        # Agrupar por Iniciativa para ver la transversalidad real
+        ini_ops = df_exploded.groupby('Iniciativa')['Oportunidades_NLP'].unique().reset_index()
+        ini_ops['Num_Oportunidades'] = ini_ops['Oportunidades_NLP'].apply(len)
+        ini_ops['Oportunidades_Detectadas'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted(x)))
+        
+        total_inis_nlp = len(ini_ops)
+        
+        if total_inis_nlp > 0:
+            resumen_trans = ini_ops['Num_Oportunidades'].value_counts().sort_index().reset_index()
             resumen_trans.columns = ['Oportunidades Impactadas', 'Cantidad de Iniciativas']
+            resumen_trans['Porcentaje'] = (resumen_trans['Cantidad de Iniciativas'] / total_inis_nlp * 100).round(1).astype(str) + '%'
             
             c_t1, c_t2 = st.columns([1, 2])
             with c_t1:
@@ -1212,12 +1253,13 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
             with c_t2:
                 st.write("**Desglose Directivo**")
                 for i in range(1, 5):
-                    inis = ini_op[ini_op['Cantidad_Oportunidades'] == i]['Iniciativa'].tolist()
-                    if inis:
-                        with st.expander(f"Iniciativas en {i} Oportunidad(es) simultáneas ({len(inis)})"):
-                            st.write(" • " + "\n • ".join(sorted(inis)))
+                    sub_df = ini_ops[ini_ops['Num_Oportunidades'] == i]
+                    if not sub_df.empty:
+                        with st.expander(f"Iniciativas en {i} Oportunidad(es) simultáneas ({len(sub_df)})"):
+                            for idx, row in sub_df.iterrows():
+                                st.write(f" • **{row['Iniciativa']}** ➔ *(Cruza: {row['Oportunidades_Detectadas']})*")
         else:
-            st.info("Ninguna iniciativa está mapeada a las 4 oportunidades principales en esta vista.")
+            st.info("No se detectaron textos válidos para procesar.")
 
 # ==========================================
 # PÁGINA 6: EXPORTACIÓN DE DATOS
