@@ -784,7 +784,6 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         totales = madurez.groupby('Portafolio')['Conexiones'].transform('sum')
         madurez['Porcentaje'] = (madurez['Conexiones'] / totales * 100).round(1)
         
-        # ORDENAMIENTO VISUAL ESTRATÉGICO FORZADO
         orden_estados = [
             'Negro (Ejemplo de Cambio)', 
             'Rojo (Señal de Buen Camino)', 
@@ -900,7 +899,6 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     if not df_conn.empty:
         df_conn['No_Alineada_Hist'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
         
-        # ALINEACION GLOBAL (TORTAS RESTAURADAS)
         st.write("**Resumen Global de Alineación**")
         hist_alin_df = df_conn.groupby(['Historia_Cod', 'Portafolio'])['No_Alineada_Hist'].any().reset_index()
         hist_alin_df['Estado_Alin'] = hist_alin_df['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
@@ -973,7 +971,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     st.markdown("---")
 
     df_conn = pd.DataFrame(datos_ana)
-    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto', 'Acrónimo'])
+    if df_conn.empty: df_conn = pd.DataFrame(columns=['Iniciativa', 'Portafolio', 'Historia_Cod', 'Historia_Corta', 'Acción Estratégica', 'Cambio Esperado', 'Estado', 'Área', 'Texto', 'Acrónimo'])
 
     # --- ANÁLISIS A: ALINEACIÓN ESTRATÉGICA EJECUTIVA ---
     st.markdown("#### A. Alineación Estratégica Ejecutiva")
@@ -1219,6 +1217,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
     if not df_conn.empty:
         historias_unicas = df_conn.drop_duplicates(subset=['Iniciativa', 'Historia_Cod', 'Texto', 'Acrónimo']).copy()
         historias_unicas['Oportunidades_NLP'] = historias_unicas['Texto'].apply(nlp_oportunidades)
+        historias_unicas['Oportunidades Detectadas'] = historias_unicas['Oportunidades_NLP'].apply(lambda x: ", ".join(x))
         
         # Eliminar las no detectadas para los cruces estratégicos
         df_exploded = historias_unicas.explode('Oportunidades_NLP')
@@ -1285,8 +1284,8 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
                 ('Educación', 'Libre Elección'): (1.2, 4.0),
                 ('Empleo', 'Incidencia'): (8.8, 4.0),
                 ('Incidencia', 'Libre Elección'): (5.0, 0.2),
-                ('Educación', 'Incidencia'): (5.0, 5.0), # Staggered para no pisar el centro
-                ('Empleo', 'Libre Elección'): (5.0, 3.0), # Staggered para no pisar el centro
+                ('Educación', 'Incidencia'): (5.0, 5.0), 
+                ('Empleo', 'Libre Elección'): (5.0, 3.0), 
                 ('Educación', 'Empleo', 'Libre Elección'): (3.5, 5.5),
                 ('Educación', 'Empleo', 'Incidencia'): (6.5, 5.5),
                 ('Educación', 'Incidencia', 'Libre Elección'): (3.5, 2.5),
@@ -1329,6 +1328,25 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
             fig_venn.update_layout(height=650, width=800, plot_bgcolor='white', margin=dict(t=20, b=20, l=20, r=20))
             
             st.plotly_chart(fig_venn, use_container_width=True)
+
+            # --- SECCIÓN C: AUDITORÍA Y DESCARGA ---
+            st.markdown("##### 3. Auditoría de Clasificación NLP")
+            st.info("Descarga la tabla con las 121 historias y revisa cómo el algoritmo interpretó los textos. Esto les permitirá auditar los resultados y ajustar las palabras clave del diccionario si lo consideran necesario.")
+            
+            df_auditoria = historias_unicas[['Portafolio', 'Iniciativa', 'Historia_Cod', 'Historia_Corta', 'Oportunidades Detectadas', 'Texto']].copy()
+            
+            buffer_audit = io.BytesIO()
+            with pd.ExcelWriter(buffer_audit, engine='openpyxl') as writer:
+                df_auditoria.to_excel(writer, index=False, sheet_name='Auditoria_NLP')
+            buffer_audit.seek(0)
+            
+            st.download_button(
+                label="⬇️ Descargar Auditoría de Historias (NLP) (.xlsx)",
+                data=buffer_audit,
+                file_name="Auditoria_Clasificacion_NLP.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
             
         else:
             st.info("No se detectaron textos válidos para procesar.")
