@@ -784,6 +784,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         totales = madurez.groupby('Portafolio')['Conexiones'].transform('sum')
         madurez['Porcentaje'] = (madurez['Conexiones'] / totales * 100).round(1)
         
+        # ORDENAMIENTO VISUAL ESTRATÉGICO FORZADO
         orden_estados = [
             'Negro (Ejemplo de Cambio)', 
             'Rojo (Señal de Buen Camino)', 
@@ -899,6 +900,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
     if not df_conn.empty:
         df_conn['No_Alineada_Hist'] = df_conn['Cambio Esperado'] == 'Cambio - no en estrategia'
         
+        # ALINEACION GLOBAL (TORTAS RESTAURADAS)
         st.write("**Resumen Global de Alineación**")
         hist_alin_df = df_conn.groupby(['Historia_Cod', 'Portafolio'])['No_Alineada_Hist'].any().reset_index()
         hist_alin_df['Estado_Alin'] = hist_alin_df['No_Alineada_Hist'].apply(lambda x: 'Desalineada' if x else 'Alineada')
@@ -1226,7 +1228,8 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         if not df_validas.empty:
             ini_ops = df_validas.groupby(['Iniciativa', 'Acrónimo'])['Oportunidades_NLP'].unique().reset_index()
             ini_ops['Num_Oportunidades'] = ini_ops['Oportunidades_NLP'].apply(len)
-            ini_ops['Combinacion'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted([str(i) for i in x if pd.notna(i)])))
+            ini_ops['Combinacion_Tuple'] = ini_ops['Oportunidades_NLP'].apply(lambda x: tuple(sorted([str(i) for i in x if pd.notna(i)])))
+            ini_ops['Combinacion'] = ini_ops['Combinacion_Tuple'].apply(lambda x: ' + '.join(x))
             
             total_inis_activas = len(df_conn['Iniciativa'].unique())
             
@@ -1249,45 +1252,83 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
                             with st.expander(f"{row['Combinacion']} ({count} Inis - {pct:.1f}%)"):
                                 st.write(" • " + "\n • ".join(nombres))
 
-            # --- SECCIÓN B: ECOSISTEMA DE TRANSVERSALIDAD (MALLA DE VENN DUAL) ---
-            st.markdown("##### 2. Ecosistema de Transversalidad (Equivalente Dinámico a Diagrama de Venn)")
-            st.caption("Las esferas grandes representan las 4 Oportunidades. Los nodos pequeños son los acrónimos de las Iniciativas, ubicados dinámicamente en las intersecciones (cruces) que comparten.")
+            # --- SECCIÓN B: ECOSISTEMA DE TRANSVERSALIDAD (DIAGRAMA DE VENN) ---
+            st.markdown("##### 2. Ecosistema de Transversalidad (Diagrama de Intersecciones)")
+            st.caption("Los acrónimos de las iniciativas han sido ubicados dinámicamente en el mapa según las oportunidades exactas que logran cruzar. (Iniciativas sin acrónimo visible tomarán las primeras letras de su nombre).")
             
-            net_venn = Network(height='600px', width='100%', directed=False, bgcolor='#FFFFFF', font_color='#202124')
-            net_venn.set_options("""
-            var options = {
-              "nodes": { "borderWidth": 2, "borderWidthSelected": 4 },
-              "edges": { "smooth": { "type": "continuous", "forceDirection": "none" }, "width": 1.5, "color": { "inherit": false, "color": "#BDBDBD" } },
-              "physics": {
-                "forceAtlas2Based": { "gravitationalConstant": -120, "centralGravity": 0.01, "springLength": 100, "springConstant": 0.08 },
-                "minVelocity": 0.75,
-                "solver": "forceAtlas2Based"
-              }
+            fig_venn = go.Figure()
+            
+            # 1. Dibujar los 4 anillos estilo Juegos Olímpicos
+            # Educación (Azul Superior Izquierdo)
+            fig_venn.add_shape(type="circle", x0=0, y0=3, x1=6, y1=9, line_color="#0277BD", line_width=4, fillcolor="rgba(2,119,189,0.05)")
+            fig_venn.add_annotation(x=1.8, y=8.8, text="<b>Educación</b>", showarrow=False, font=dict(size=16, color="#0277BD"))
+            
+            # Empleo (Magenta Superior Derecho)
+            fig_venn.add_shape(type="circle", x0=4, y0=3, x1=10, y1=9, line_color="#D81B60", line_width=4, fillcolor="rgba(216,27,96,0.05)")
+            fig_venn.add_annotation(x=8.2, y=8.8, text="<b>Empleo</b>", showarrow=False, font=dict(size=16, color="#D81B60"))
+            
+            # Libre Elección (Amarillo Inferior Izquierdo)
+            fig_venn.add_shape(type="circle", x0=0, y0=-1, x1=6, y1=5, line_color="#FBC02D", line_width=4, fillcolor="rgba(251,192,45,0.05)")
+            fig_venn.add_annotation(x=1.8, y=-0.8, text="<b>Libre Elección</b>", showarrow=False, font=dict(size=16, color="#F57F17"))
+            
+            # Incidencia (Cyan Inferior Derecho)
+            fig_venn.add_shape(type="circle", x0=4, y0=-1, x1=10, y1=5, line_color="#00ACC1", line_width=4, fillcolor="rgba(0,172,193,0.05)")
+            fig_venn.add_annotation(x=8.2, y=-0.8, text="<b>Incidencia</b>", showarrow=False, font=dict(size=16, color="#00838F"))
+            
+            # 2. Diccionario matemático de coordenadas para las 15 intersecciones posibles
+            venn_coords = {
+                ('Educación',): (1.8, 7.5),
+                ('Empleo',): (8.2, 7.5),
+                ('Libre Elección',): (1.8, 0.5),
+                ('Incidencia',): (8.2, 0.5),
+                ('Educación', 'Empleo'): (5.0, 7.8),
+                ('Educación', 'Libre Elección'): (1.2, 4.0),
+                ('Empleo', 'Incidencia'): (8.8, 4.0),
+                ('Incidencia', 'Libre Elección'): (5.0, 0.2),
+                ('Educación', 'Incidencia'): (5.0, 5.0), # Staggered para no pisar el centro
+                ('Empleo', 'Libre Elección'): (5.0, 3.0), # Staggered para no pisar el centro
+                ('Educación', 'Empleo', 'Libre Elección'): (3.5, 5.5),
+                ('Educación', 'Empleo', 'Incidencia'): (6.5, 5.5),
+                ('Educación', 'Incidencia', 'Libre Elección'): (3.5, 2.5),
+                ('Empleo', 'Incidencia', 'Libre Elección'): (6.5, 2.5),
+                ('Educación', 'Empleo', 'Incidencia', 'Libre Elección'): (5.0, 4.0)
             }
-            """)
             
-            color_map = {
-                'Educación': {'background': '#1976D2', 'border': '#0D47A1'},
-                'Empleo': {'background': '#388E3C', 'border': '#1B5E20'},
-                'Incidencia': {'background': '#F57C00', 'border': '#E65100'},
-                'Libre Elección': {'background': '#7B1FA2', 'border': '#4A148C'}
-            }
-            
-            for op, col in color_map.items():
-                net_venn.add_node(op, label=op, size=45, color=col, font={'size': 20, 'color': '#FFFFFF', 'bold': True}, shape='circle')
+            # 3. Agrupar acrónimos por combinación y dibujarlos
+            def format_acronyms(acronyms, max_per_line=3):
+                lines = []
+                for i in range(0, len(acronyms), max_per_line):
+                    lines.append(", ".join(acronyms[i:i+max_per_line]))
+                return "<br>".join(lines)
                 
+            acro_by_comb = defaultdict(list)
             for _, row in ini_ops.iterrows():
                 acronimo = row['Acrónimo']
                 if acronimo == 'N/A' or not acronimo: acronimo = row['Iniciativa'][:10]
+                acro_by_comb[row['Combinacion_Tuple']].append(acronimo)
                 
-                net_venn.add_node(acronimo, label=acronimo, size=20, color={'background': '#EEEEEE', 'border': '#9E9E9E'}, font={'size': 14}, shape='box')
-                
-                for op in row['Oportunidades_NLP']:
-                    if pd.notna(op):
-                        net_venn.add_edge(acronimo, op)
+            for comb_tuple, acro_list in acro_by_comb.items():
+                if comb_tuple in venn_coords:
+                    x_coord, y_coord = venn_coords[comb_tuple]
+                    texto_final = format_acronyms(sorted(acro_list))
                     
-            html_venn = net_venn.generate_html()
-            components.html(html_venn, height=620)
+                    fig_venn.add_annotation(
+                        x=x_coord, 
+                        y=y_coord, 
+                        text=f"<b>{texto_final}</b>", 
+                        showarrow=False, 
+                        font=dict(size=11, color="#212121"),
+                        bgcolor="rgba(255,255,255,0.7)",
+                        bordercolor="#E0E0E0",
+                        borderwidth=1,
+                        borderpad=4
+                    )
+            
+            fig_venn.update_xaxes(range=[-1, 11], showgrid=False, zeroline=False, visible=False)
+            fig_venn.update_yaxes(range=[-2, 10], showgrid=False, zeroline=False, visible=False)
+            fig_venn.update_layout(height=650, width=800, plot_bgcolor='white', margin=dict(t=20, b=20, l=20, r=20))
+            
+            st.plotly_chart(fig_venn, use_container_width=True)
             
         else:
             st.info("No se detectaron textos válidos para procesar.")
