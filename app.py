@@ -74,12 +74,15 @@ def limpiar_para_nlp(texto):
 
 def nlp_oportunidades(texto_crudo):
     texto = limpiar_para_nlp(texto_crudo)
-    if not texto: return []
+    if not texto: return ['Otra / No Detectada por NLP']
     oportunidades = set()
     if re.search(dict_edu, texto): oportunidades.add('Educación')
     if re.search(dict_emp, texto): oportunidades.add('Empleo')
     if re.search(dict_inc, texto): oportunidades.add('Incidencia')
     if re.search(dict_lib, texto): oportunidades.add('Libre Elección')
+    
+    if not oportunidades:
+        return ['Otra / No Detectada por NLP']
     return list(oportunidades)
 
 def extraer_area_codigo(codigo):
@@ -1104,7 +1107,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
 
     # --- ANÁLISIS H: COMPLEJIDAD Y ALCANCE DE LAS HISTORIAS ---
     st.markdown("#### H. Complejidad de la Intervención (Multiacción y Multicambio)")
-    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples impactos simultáneamente.")
+    st.caption("Analiza qué tan robustas son las intervenciones: si requieren múltiples acciones para ejecutarse o si logran impactar múltiples resultados simultáneamente.")
     
     if not df_conn.empty:
         tab_h1, tab_h2 = st.tabs(["📌 A Nivel Historia", "🌍 A Nivel Iniciativa"])
@@ -1217,12 +1220,13 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         
         # Eliminar las no detectadas para los cruces estratégicos
         df_exploded = historias_unicas.explode('Oportunidades_NLP')
-        df_validas = df_exploded[df_exploded['Oportunidades_NLP'] != 'Otra / No Detectada por NLP']
+        df_validas = df_exploded.dropna(subset=['Oportunidades_NLP'])
+        df_validas = df_validas[df_validas['Oportunidades_NLP'] != 'Otra / No Detectada por NLP']
         
         if not df_validas.empty:
             ini_ops = df_validas.groupby(['Iniciativa', 'Acrónimo'])['Oportunidades_NLP'].unique().reset_index()
             ini_ops['Num_Oportunidades'] = ini_ops['Oportunidades_NLP'].apply(len)
-            ini_ops['Combinacion'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted(x)))
+            ini_ops['Combinacion'] = ini_ops['Oportunidades_NLP'].apply(lambda x: ' + '.join(sorted([str(i) for i in x if pd.notna(i)])))
             
             total_inis_activas = len(df_conn['Iniciativa'].unique())
             
@@ -1276,11 +1280,11 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
                 acronimo = row['Acrónimo']
                 if acronimo == 'N/A' or not acronimo: acronimo = row['Iniciativa'][:10]
                 
-                # Asignar un color visual neutro para las iniciativas
                 net_venn.add_node(acronimo, label=acronimo, size=20, color={'background': '#EEEEEE', 'border': '#9E9E9E'}, font={'size': 14}, shape='box')
                 
                 for op in row['Oportunidades_NLP']:
-                    net_venn.add_edge(acronimo, op)
+                    if pd.notna(op):
+                        net_venn.add_edge(acronimo, op)
                     
             html_venn = net_venn.generate_html()
             components.html(html_venn, height=620)
