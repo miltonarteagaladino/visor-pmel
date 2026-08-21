@@ -338,12 +338,12 @@ cambios_unicos = sorted(list(set(d['Cambio Esperado'] for d in datos_list)))
 dict_acciones = {acc: f"A{i+1}" for i, acc in enumerate(acciones_unicas)}
 dict_cambios = {cam: f"C{i+1}" for i, cam in enumerate(cambios_unicos)}
 
-# --- ACTUALIZACIÓN DE PALETA DE COLORES MEL ---
+# --- PALETA DE COLORES MEL ---
 COLORES_ESTADO = {
-    'Negro (Ejemplo de Cambio)': '#4CAF50', # Verde
-    'Rojo (Señal de Buen Camino)': '#2196F3', # Azul
-    'Naranja (Intención de Cambio)': '#9C27B0', # Morado
-    'Morado (Efecto Estancado)': '#F44336' # Rojo
+    'Negro (Ejemplo de Cambio)': '#4CAF50', 
+    'Rojo (Señal de Buen Camino)': '#2196F3', 
+    'Naranja (Intención de Cambio)': '#9C27B0', 
+    'Morado (Efecto Estancado)': '#F44336' 
 }
 COLORES_HEX_PUROS = COLORES_ESTADO.copy()
 MEL_COLORS = COLORES_ESTADO.copy()
@@ -604,12 +604,59 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 # PÁGINA 3: PATRONES DE CO-OCURRENCIA
 # ==========================================
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
-    st.info("💡 **Fórmulas de Éxito:** El algoritmo cruza EXCLUSIVAMENTE las conexiones que tienen evidencia de cambio (Negras) o son señales de buen camino (Rojas).", icon="🚀")
+    st.info("💡 **Analizador de Fórmulas y Solapamientos:** Herramientas para descubrir qué combinaciones de estrategias o cambios ocurren simultáneamente en una misma historia o iniciativa.", icon="🚀")
+    
+    # NUEVO: Pestaña 4 para Intersección interactiva de Acciones
+    tab_c1, tab_c2, tab_c3, tab_c4 = st.tabs(["📌 En una misma HISTORIA", "📌 En una misma INICIATIVA", "🌐 Ecosistema MIXTO", "🔄 Cruce de Acciones (A vs B)"])
     
     datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
 
+    with tab_c4:
+        st.markdown("### 🔄 Calculadora Interactiva de Intersecciones")
+        st.write("Calcula la proporción exacta de historias que comparten dos Acciones Estratégicas específicas (Calculado sobre todas las conexiones, sin filtro de éxito).")
+        
+        acciones_disp = sorted(list(set(d['Acción Estratégica'] for d in datos_ana if d['Acción Estratégica'])))
+        if len(acciones_disp) >= 2:
+            col_sel1, col_sel2 = st.columns(2)
+            with col_sel1:
+                acc_a = st.selectbox("🎯 Seleccionar Acción A:", acciones_disp, index=0)
+            with col_sel2:
+                acc_b = st.selectbox("🎯 Seleccionar Acción B:", acciones_disp, index=1)
+                
+            if acc_a and acc_b:
+                df_base_cruce = pd.DataFrame(datos_ana)
+                hists_a = set(df_base_cruce[df_base_cruce['Acción Estratégica'] == acc_a]['Historia_Cod'])
+                hists_b = set(df_base_cruce[df_base_cruce['Acción Estratégica'] == acc_b]['Historia_Cod'])
+                
+                hists_ambas = hists_a.intersection(hists_b)
+                hists_union = hists_a.union(hists_b)
+                
+                num_a = len(hists_a)
+                num_b = len(hists_b)
+                num_ambas = len(hists_ambas)
+                num_union = len(hists_union)
+                
+                pct_a = (num_ambas / num_a * 100) if num_a > 0 else 0
+                pct_b = (num_ambas / num_b * 100) if num_b > 0 else 0
+                pct_union = (num_ambas / num_union * 100) if num_union > 0 else 0
+                
+                st.markdown("#### 📊 Resultados del Cruce")
+                c_res1, c_res2, c_res3, c_res4 = st.columns(4)
+                c_res1.metric(f"Historias con Acción A", num_a)
+                c_res2.metric(f"Historias con Acción B", num_b)
+                c_res3.metric(f"Historias con AMBAS", num_ambas, f"{pct_union:.1f}% del Universo (A o B)", delta_color="off")
+                c_res4.metric("Universo (A o B)", num_union)
+                
+                st.markdown("#### 🎯 Proporcionalidad Exacta")
+                st.info(f"Del total de historias que tienen la **Acción A**, el **{pct_a:.1f}%** también integran la **Acción B**.")
+                st.info(f"Del total de historias que tienen la **Acción B**, el **{pct_b:.1f}%** también integran la **Acción A**.")
+                
+                if num_ambas > 0:
+                    with st.expander("👁️ Ver los códigos de las historias que cruzan ambas acciones"):
+                        st.write(" • " + "\n • ".join(sorted(list(hists_ambas))))
+
     if not datos_exitosos:
-        st.warning("El portafolio seleccionado no tiene conexiones exitosas.")
+        st.warning("El portafolio seleccionado no tiene conexiones exitosas para calcular Patrones y Ecosistemas.")
     else:
         def algoritmo_seguro(lista_dicts, key_agrupadora, key_objetivo, nombre_grupo, min_r, max_r):
             grupos = defaultdict(set)
@@ -683,7 +730,7 @@ elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
                 if len(apariciones) > 1: resultados[pat] = apariciones
                     
             patrones_limpios = {}
-            for pat, aps in resultados.items():
+            for pat, aps in items():
                 es_redundante = False
                 for pat_otro, aps_otro in resultados.items():
                     if pat != pat_otro and pat.issubset(pat_otro) and len(aps) == len(aps_otro):
@@ -705,7 +752,6 @@ elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
                 with st.expander("👁️ Ver cuáles iniciativas comparten este modelo"):
                     st.write(f"**Iniciativas:** {donde_se_vio}")
 
-        tab_c1, tab_c2, tab_c3 = st.tabs(["📌 En una misma HISTORIA", "📌 En una misma INICIATIVA", "🌐 Ecosistema MIXTO"])
         with tab_c1:
             cc1, cc2 = st.columns(2)
             with cc1:
@@ -830,7 +876,7 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
             st.write("**MÁS INTENCIONES (Naranjas)**")
             top2 = madurez_ini.sort_values('Es_Intencion', ascending=False).head(10)
             st.dataframe(top2[['Iniciativa', 'Es_Intencion']].rename(columns={'Es_Intencion': 'Intenciones'}), hide_index=True, use_container_width=True)
-            fig2 = px.bar(top2, x='Es_Intencion', y='Iniciativa', orientation='h', color_discrete_sequence=['#9C27B0'], title="Fase de Intención")
+            fig2 = px.bar(top2, x='Es_Intencion', y='Iniciativa', orientation='h', color_discrete_sequence=['#2196F3'], title="Fase de Intención")
             fig2.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=0, r=0, t=30, b=0), height=300, template="plotly_white")
             st.plotly_chart(fig2, use_container_width=True)
             
@@ -1238,7 +1284,6 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         historias_unicas['Oportunidades_NLP'] = historias_unicas['Texto'].apply(nlp_oportunidades)
         historias_unicas['Oportunidades Detectadas'] = historias_unicas['Oportunidades_NLP'].apply(lambda x: ", ".join(x))
         
-        # Eliminar las no detectadas para los cruces estratégicos
         df_exploded = historias_unicas.explode('Oportunidades_NLP')
         df_validas = df_exploded.dropna(subset=['Oportunidades_NLP'])
         df_validas = df_validas[df_validas['Oportunidades_NLP'] != 'Otra / No Detectada por NLP']
