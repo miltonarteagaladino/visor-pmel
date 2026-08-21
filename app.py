@@ -606,7 +606,6 @@ elif pagina_actual == "📊 Analítica de Portafolio":
 elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
     st.info("💡 **Analizador de Fórmulas y Solapamientos:** Herramientas para descubrir qué combinaciones de estrategias o cambios ocurren simultáneamente en una misma historia o iniciativa.", icon="🚀")
     
-    # NUEVO: Pestaña 4 para Intersección interactiva de Acciones
     tab_c1, tab_c2, tab_c3, tab_c4 = st.tabs(["📌 En una misma HISTORIA", "📌 En una misma INICIATIVA", "🌐 Ecosistema MIXTO", "🔄 Cruce de Acciones (A vs B)"])
     
     datos_exitosos = [d for d in datos_ana if d['Estado'] in ['Negro (Ejemplo de Cambio)', 'Rojo (Señal de Buen Camino)'] ]
@@ -730,7 +729,7 @@ elif pagina_actual == "🧬 Patrones de Co-Ocurrencia":
                 if len(apariciones) > 1: resultados[pat] = apariciones
                     
             patrones_limpios = {}
-            for pat, aps in items():
+            for pat, aps in resultados.items(): # CORRECCIÓN V53 APLICADA AQUÍ
                 es_redundante = False
                 for pat_otro, aps_otro in resultados.items():
                     if pat != pat_otro and pat.issubset(pat_otro) and len(aps) == len(aps_otro):
@@ -989,6 +988,21 @@ elif pagina_actual == "📈 Reporte Ejecutivo MEL":
         res_tabla = res_tabla[['Portafolio', 'Iniciativas Alineada', 'Iniciativas Desalineada', 'Historias Alineada', 'Historias Desalineada']]
         res_tabla.columns = ['Portafolio', 'Iniciativas Alineadas', 'Iniciativas Desalineadas', 'Historias Alineadas', 'Historias Desalineadas']
         st.dataframe(res_tabla, use_container_width=True, hide_index=True)
+
+        c_al1, c_al2 = st.columns(2)
+        with c_al1:
+            fig_al1 = px.bar(res_ini, x='Portafolio', y='Cantidad_Iniciativas', color='Estado_Alin', barmode='group',
+                             color_discrete_map={'Alineada': '#4CAF50', 'Desalineada': '#D32F2F'}, text_auto=True,
+                             title="Iniciativas Alineadas vs Desalineadas")
+            fig_al1.update_layout(template="plotly_white")
+            st.plotly_chart(fig_al1, use_container_width=True)
+            
+        with c_al2:
+            fig_al2 = px.bar(res_hist, x='Portafolio', y='Cantidad_Historias', color='Estado_Alin', barmode='group',
+                             color_discrete_map={'Alineada': '#4CAF50', 'Desalineada': '#D32F2F'}, text_auto=True,
+                             title="Historias Alineadas vs Desalineadas")
+            fig_al2.update_layout(template="plotly_white")
+            st.plotly_chart(fig_al2, use_container_width=True)
 
     st.markdown("---")
 
@@ -1284,6 +1298,7 @@ elif pagina_actual == "📊 Indicadores Ejecutivos para Dirección":
         historias_unicas['Oportunidades_NLP'] = historias_unicas['Texto'].apply(nlp_oportunidades)
         historias_unicas['Oportunidades Detectadas'] = historias_unicas['Oportunidades_NLP'].apply(lambda x: ", ".join(x))
         
+        # Eliminar las no detectadas para los cruces estratégicos
         df_exploded = historias_unicas.explode('Oportunidades_NLP')
         df_validas = df_exploded.dropna(subset=['Oportunidades_NLP'])
         df_validas = df_validas[df_validas['Oportunidades_NLP'] != 'Otra / No Detectada por NLP']
